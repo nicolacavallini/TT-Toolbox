@@ -100,7 +100,8 @@ rx = x.r;
 crx = core2cell(x);
 
 if (symm)
-    ra = A.r;    
+    disp("IS SYMMETRIC")
+    ra = A.r;
     ry = (y.r).*ra;
     ra = ra.^2;
     cry = core2cell(A'*y);
