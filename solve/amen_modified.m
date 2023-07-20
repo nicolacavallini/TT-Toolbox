@@ -1,21 +1,9 @@
-function [x,testdata]=amen_modified(A, y, tol, varargin)
-
-
-if (~isempty(varargin))
-    v1 = varargin{1};
-    if (isa(v1, 'cell'))
-        varargin=v1;
-    end;
-end;
+function [x,testdata]=amen_modified(A, y, tol,x0)
 
 % Inner parameters
-max_full_size=50;
 
 resid_damp = 2; % Truncation error to true residual treshold
 
-nswp=50;
-local_restart=40;
-local_iters=2;
 
 local_prec = 'jacobi';
 
@@ -24,67 +12,25 @@ k = ["jacobi","cjacobi","ljacobi","rjacobi"];
 
 preconditioner_dict = dictionary(k,v);
 
-
 rmax=1000;
-trunc_norm = 'residual';
-trunc_norm_char = 1;
-% trunc_norm = 'fro';
 
 tol_exit = [];
 
 
-kickrank = 4;
-kickrank2 = 0;
-x=[];
+kickrank = 10;
+x=x0;
 crz = [];
 
 symm = false;
 
+nswp = 4;
+max_full_size = 50;
+trunc_norm = 'fro';
 
 
 if (isempty(tol_exit))
     tol_exit = tol;
 end;
-
-obs = [];
-for i=1:2:length(varargin)-1
-    switch lower(varargin{i})
-        case 'nswp'
-            nswp=varargin{i+1};
-        case 'rmax'
-            rmax=varargin{i+1};
-        case 'x0'
-            x=varargin{i+1};
-        case 'z0'
-            crz=varargin{i+1};
-        case 'obs'
-            obs=varargin{i+1};
-        case 'local_prec'
-            local_prec=varargin{i+1};
-        case 'local_restart'
-            local_restart=varargin{i+1};
-        case 'local_iters'
-            local_iters=varargin{i+1};
-        case 'kickrank'
-            kickrank=varargin{i+1};
-        case 'kickrank2'
-            kickrank2=varargin{i+1};            
-        case  'max_full_size'
-            max_full_size=varargin{i+1};
-        case 'trunc_norm'
-            trunc_norm = varargin{i+1};
-        case 'tol_exit'
-            tol_exit = varargin{i+1};
-        case 'symm'
-            symm = varargin{i+1};
-            
-        otherwise
-            error('Unrecognized option: %s\n',varargin{i});
-    end
-end
-
-
-
 
 if (A.n~=A.m)
     error(' AMEn does not know how to solve rectangular systems!\n Use amen_solve2(ctranspose(A)*A, ctranspose(A)*f, tol) instead.');
@@ -267,6 +213,10 @@ for swp=1:nswp
             res_prev = norm(bfun3(Phi1, A1, Phi2, sol_prev) - rhs)/norm_rhs;
 
             aux = preconditioner_dict(local_prec);
+            
+            local_restart=40;
+            local_iters=2;
+
             sol = solve3d_2ml(Phi1, A1, Phi2, rhs, real_tol*norm_rhs, sol_prev, aux, local_restart, local_iters);
             res_new = norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;    
         end;
