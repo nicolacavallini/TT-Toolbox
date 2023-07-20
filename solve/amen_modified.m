@@ -28,11 +28,6 @@ trunc_norm_char = 1;
 
 tol_exit = [];
 
-% kicktype = 'svd';
-kicktype = 'als';
-% kicktype = 'chol';
-% kicktype = 'rand';
-
 verb=1;
 kickrank = 4;
 kickrank2 = 0;
@@ -117,8 +112,6 @@ for i=1:2:length(varargin)-1
             kickrank=varargin{i+1};
         case 'kickrank2'
             kickrank2=varargin{i+1};            
-        case 'kicktype'
-            kicktype=varargin{i+1};
         case  'max_full_size'
             max_full_size=varargin{i+1};
         case 'resid_damp'
@@ -171,29 +164,14 @@ end;
 phia = cell(d+1,1); phia{1}=1; phia{d+1}=1;
 phiy = cell(d+1,1); phiy{1}=1; phiy{d+1}=1;
 % Try to compute the low-rank appr. to residual on-the-fly
-if (strcmp(kicktype, 'als'))&&(kickrank+kickrank2>0)
-    % Partial projections Z'AX, Z'Y
-    phiza = cell(d+1,1); phiza{1}=1; phiza{d+1}=1;
-    phizy = cell(d+1,1); phizy{1}=1; phizy{d+1}=1;
-    if (isempty(crz))
-        crz = tt_rand(n, d, kickrank+kickrank2, -1);
-    end;
-    rz = crz.r;
-    crz = core2cell(crz);
-end;
 
 
 % QR factors of the residual
-if (strcmp(kicktype, 'svd'))&&(kickrank>0)
-    Rs = cell(d+1,1);
-    Rs{1} = 1; Rs{d+1}=1;
-end;
 
-if (strcmp(kicktype, 'chol'))&&(kickrank>0)
-    Rs = cell(3,d+1);
-    Rs{1,1}=1; Rs{2,1}=1; Rs{3,1}=1;
-    Rs{1,d+1}=1; Rs{2,d+1}=1; Rs{3,d+1}=1;
-end;
+
+Rs = cell(d+1,1);
+Rs{1} = 1; Rs{d+1}=1;
+
 
 if (~isempty(obs))
     robs = obs.r;
@@ -226,30 +204,7 @@ for swp=1:nswp
     phiobs = 1;    
     for i=d:-1:2
         % Update the Z in the ALS version
-        if (strcmp(kicktype, 'als'))&&(kickrank+kickrank2>0)&&(~last_sweep)
-            if (swp>1)
-                % Update crz (we don't want just random-svd)
-                crzAt = bfun3(phiza{i}, crA{i}, phiza{i+1}, reshape(crx{i}, rx(i)*n(i)*rx(i+1), 1));
-                crzAt = reshape(crzAt, rz(i)*n(i), rz(i+1));
-                crzy = phizy{i}*reshape(cry{i}, ry(i), n(i)*ry(i+1));
-                crzy = reshape(crzy, rz(i)*n(i), ry(i+1));
-                crzy = crzy*phizy{i+1};
-                crznew = crzy*nrmsc - crzAt;
-                crznew = reshape(crznew, rz(i), n(i)*rz(i+1));
-                [vz, sz, crznew]=svd(crznew, 'econ');
-                crznew = conj(crznew(:,1:min(kickrank, size(crznew,2))));
-                if (i<d)
-                    crznew = [crznew, randn(n(i)*rz(i+1), kickrank2)];
-                end;
-            else
-                crznew = reshape(crz{i}, rz(i), n(i)*rz(i+1)).';
-            end;
-            
-            [crznew, rv]=qr(crznew, 0);
-            rznew = size(crznew, 2);
-            crznew = reshape(crznew.', rznew, n(i), rz(i+1));
-            crz{i} = crznew;
-        end;
+        
         if (swp>1)
             % Remove old norm correction
             nrmsc = nrmsc/(nrmsy(i-1)/(nrmsa(i-1)*nrmsx(i-1)));
@@ -296,67 +251,33 @@ for swp=1:nswp
         nrmsc = nrmsc*(nrmsy(i-1)/(nrmsa(i-1)*nrmsx(i-1)));
                 
         % Prepare QRs of the residual
-        if (strcmp(kicktype, 'svd'))&&(kickrank>0)&&(~last_sweep)
-            % We need to assemble the core [Y^k & A^k X^k] and orthogonalize
-            % it.
-            A1 = reshape(permute(crA{i}, [1,2,4,3]), ra(i)*n(i)*ra(i+1), n(i));
-            x1 = reshape(permute(crx{i}, [2,1,3]), n(i), rx(i)*rx(i+1));
-            Ax1 = A1*x1;
-            Ax1 = reshape(Ax1, ra(i), n(i), ra(i+1), rx(i), rx(i+1));
-            Ax1 = permute(Ax1, [1, 4, 2, 3, 5]);
-            Ax1 = reshape(Ax1, ra(i)*rx(i), n(i), ra(i+1)*rx(i+1));
-            r1 = ra(i)*rx(i)+ry(i); r2 = ra(i+1)*rx(i+1)+ry(i+1);
-            if (i==d); r2 = 1; end;
-            res1 = zeros(r1, n(i), r2);
-            res1(1:ra(i)*rx(i), :, 1:ra(i+1)*rx(i+1)) = Ax1;
-            if (i==d)
-                res1(ra(i)*rx(i)+1:r1, :, 1) = cry{i};
-            else
-                res1(ra(i)*rx(i)+1:r1, :, ra(i+1)*rx(i+1)+1:r2) = cry{i};
-            end;
-            res1 = reshape(res1, r1*n(i), r2);
-            res2 = res1*Rs{i+1};
-            r3 = size(Rs{i+1}, 2);
-            res2 = reshape(res2, r1, n(i)*r3);
-            rr=qr(res2.', 0);
-            Rs{i} = triu(rr(1:min(size(rr)), :)).';
-            curnorm = norm(Rs{i}, 'fro');
-            if (Rs{i}>0)
-                Rs{i} = Rs{i}/curnorm;
-            end;
-        end;
         
-        if (strcmp(kicktype, 'chol'))&&(kickrank>0)&&(~last_sweep)
-            % Cholestky factors Z_k*Z_k' = [y'y,y'Ax,x'A'y,x'A'Ax]
-            Rs{1,i} = compute_next_Phi(Rs{1,i+1}, cry{i}, [], cry{i}, 'rl');
-            Rs{2,i} = compute_next_Phi(Rs{2,i+1}, cry{i}, crA{i}, crx{i}, 'rl');
-            % The most heavy, (Ax)^2. Do it carefully to keep r^5 cmplx.
-            % Phi2: rx2, ra2, ra2', rx2'
-            Rs{3,i} = reshape(Rs{3,i+1}, rx(i+1), ra(i+1)*ra(i+1)*rx(i+1));
-            Rs{3,i} = reshape(crx{i}, rx(i)*n(i), rx(i+1))*Rs{3,i};
-            Rs{3,i} = reshape(Rs{3,i}, rx(i), n(i)*ra(i+1)*ra(i+1)*rx(i+1));
-            Rs{3,i} = Rs{3,i}.';
-            Rs{3,i} = reshape(Rs{3,i}, n(i)*ra(i+1), ra(i+1)*rx(i+1)*rx(i));
-            Rs{3,i} = reshape(crA{i}, ra(i)*n(i), n(i)*ra(i+1))*Rs{3,i};
-            Rs{3,i} = reshape(Rs{3,i}, ra(i), n(i)*ra(i+1)*rx(i+1)*rx(i));
-            Rs{3,i} = Rs{3,i}.';
-            Rs{3,i} = reshape(Rs{3,i}, n(i)*ra(i+1), rx(i+1)*rx(i)*ra(i));
-            % Now, not Ak, but Ak'
-            A1 = permute(crA{i}, [1,3,2,4]);
-            A1 = conj(reshape(A1, ra(i)*n(i), n(i)*ra(i+1)));
-            Rs{3,i} = A1*Rs{3,i};
-            Rs{3,i} = reshape(Rs{3,i}, ra(i), n(i)*rx(i+1)*rx(i)*ra(i));
-            Rs{3,i} = Rs{3,i}.';
-            Rs{3,i} = reshape(Rs{3,i}, n(i)*rx(i+1), rx(i)*ra(i)*ra(i)); % 2nd: rx,ra,ra'
-            Rs{3,i} = conj(reshape(crx{i}, rx(i), n(i)*rx(i+1)))*Rs{3,i};
-            Rs{3,i} = Rs{3,i}.'; % now rx,ra,ra',rx'
-            Rs{3,i} = reshape(Rs{3,i}, rx(i)*ra(i), ra(i)*rx(i));
+        % We need to assemble the core [Y^k & A^k X^k] and orthogonalize
+        % it.
+        A1 = reshape(permute(crA{i}, [1,2,4,3]), ra(i)*n(i)*ra(i+1), n(i));
+        x1 = reshape(permute(crx{i}, [2,1,3]), n(i), rx(i)*rx(i+1));
+        Ax1 = A1*x1;
+        Ax1 = reshape(Ax1, ra(i), n(i), ra(i+1), rx(i), rx(i+1));
+        Ax1 = permute(Ax1, [1, 4, 2, 3, 5]);
+        Ax1 = reshape(Ax1, ra(i)*rx(i), n(i), ra(i+1)*rx(i+1));
+        r1 = ra(i)*rx(i)+ry(i); r2 = ra(i+1)*rx(i+1)+ry(i+1);
+        if (i==d); r2 = 1; end;
+        res1 = zeros(r1, n(i), r2);
+        res1(1:ra(i)*rx(i), :, 1:ra(i+1)*rx(i+1)) = Ax1;
+        if (i==d)
+            res1(ra(i)*rx(i)+1:r1, :, 1) = cry{i};
+        else
+            res1(ra(i)*rx(i)+1:r1, :, ra(i+1)*rx(i+1)+1:r2) = cry{i};
         end;
-        
-        if strcmp(kicktype, 'als')&&(kickrank+kickrank2>0)&&(~last_sweep)
-            rz(i) = rznew;
-            phiza{i} = compute_next_Phi(phiza{i+1}, crz{i}, crA{i}, crx{i}, 'rl', nrmsa(i-1));
-            phizy{i} = compute_next_Phi(phizy{i+1}, crz{i}, [], cry{i}, 'rl', nrmsy(i-1));
+        res1 = reshape(res1, r1*n(i), r2);
+        res2 = res1*Rs{i+1};
+        r3 = size(Rs{i+1}, 2);
+        res2 = reshape(res2, r1, n(i)*r3);
+        rr=qr(res2.', 0);
+        Rs{i} = triu(rr(1:min(size(rr)), :)).';
+        curnorm = norm(Rs{i}, 'fro');
+        if (Rs{i}>0)
+            Rs{i} = Rs{i}/curnorm;
         end;
         
     end;
@@ -405,14 +326,8 @@ for swp=1:nswp
             
             res_prev = norm(B*sol_prev - rhs)/norm_rhs;
             
-%             if (res_prev>real_tol)
-%                 sol = pinv(B)*rhs;
-                sol = B \ rhs;
-                res_new = norm(B*sol-rhs)/norm_rhs;
-%             else
-%                 sol = sol_prev;
-%                 res_new = res_prev;
-%             end;
+            sol = B \ rhs;
+            res_new = norm(B*sol-rhs)/norm_rhs;
             
         else % Structured solution.
             
@@ -470,46 +385,7 @@ for swp=1:nswp
                        break;
                    end;
                end;
-               r=r+1;                
-%                 % check the residual trunc
-%                 % start from the old rank
-%                 r = min(rx(i)*n(i),rx(i+1));
-%                 r = max(r-kickrank, 1);
-%                 
-%                 cursol = u(:,1:r)*diag(s(1:r))*v(:,1:r)';
-%                 if (rx(i)*n(i)*rx(i+1)<max_full_size)
-%                     cursol = cursol(:);
-%                     res = norm(B*cursol-rhs)/norm_rhs;
-%                 else
-%                     res = norm(bfun3(Phi1, A1, Phi2, cursol)-rhs)/norm_rhs;
-%                 end;
-%                 if (res<max(real_tol, res_new)*resid_damp)
-%                     drank = -1; % rank is overestimated; decrease
-%                 else
-%                     drank = 1; % residual is large; increase the rank
-%                 end;
-%                 while (r>0)&&(r<=numel(s))
-%                     cursol = u(:,1:r)*diag(s(1:r))*v(:,1:r)';
-%                     if (rx(i)*n(i)*rx(i+1)<max_full_size)
-%                         cursol = cursol(:);
-%                         res = norm(B*cursol(:)-rhs)/norm_rhs;
-%                     else
-%                         res = norm(bfun3(Phi1, A1, Phi2, cursol)-rhs)/norm_rhs;
-%                     end;
-%                     if (drank>0)
-%                         if (res<max(real_tol, res_new)*resid_damp)
-%                             break;
-%                         end;
-%                     else
-%                         if (res>=max(real_tol, res_new)*resid_damp)
-%                             break;
-%                         end;
-%                     end;
-%                     r = r+drank;
-%                 end;
-%                 if (drank<0)
-%                     r=r+1;
-%                 end;
+               r=r+1;
             end;
             
             r = min(r, numel(s));
@@ -524,112 +400,31 @@ for swp=1:nswp
         
         u = u(:,1:r);
         v = conj(v(:,1:r))*diag(s(1:r));
-        if (strcmp(kicktype, 'als'))&&(kickrank+kickrank2>0)&&(~last_sweep)
-            % Update crz (we don't want just random-svd)
-            crzAt = bfun3(phiza{i}, A1, phiza{i+1}, u*v.');
-            crzAt = reshape(crzAt, rz(i)*n(i), rz(i+1));
-            crzy = phizy{i}*y1;
-            crzy = reshape(crzy, rz(i)*n(i), ry(i+1));
-            crzy = crzy*phizy{i+1};
-            crznew = crzy - crzAt;
-            [crznew, sz,vz]=svd(crznew, 'econ');
-            crznew = crznew(:,1:min(kickrank, size(crznew,2)));
-            if (i<d)
-                crznew = [crznew, randn(rz(i)*n(i), kickrank2)];
-            end;
-            
-            [crznew, rv]=qr(crznew, 0);
-            rznew = size(crznew, 2);
-            crznew = reshape(crznew, rz(i), n(i), rznew);
-            crz{i} = crznew;
-        end;
+        
         
         if (i<d) %  enrichment, etc
             if (kickrank>0)&&(~last_sweep)
                 % Smarter kick: low-rank PCA in residual
                 % Matrix: Phi1-A{i}, rhs: Phi1-y{i}, sizes rx(i)*n - ra(i+1)
-                if (strcmp(kicktype, 'svd'))
-                    leftresid = reshape(Phi1, rx(i)*rx(i), ra(i));
-                    leftresid = leftresid.';
-                    leftresid = reshape(leftresid, ra(i)*rx(i), rx(i));
-                    leftresid = leftresid*reshape(u*v.', rx(i), n(i)*rx(i+1));
-                    leftresid = reshape(leftresid, ra(i), rx(i), n(i), rx(i+1));
-                    leftresid = permute(leftresid, [1, 3, 2, 4]);
-                    leftresid = reshape(leftresid, ra(i)*n(i), rx(i)*rx(i+1));
-                    leftresid = reshape(permute(A1, [2,4,1,3]), n(i)*ra(i+1), ra(i)*n(i))*leftresid;
-                    leftresid = reshape(leftresid, n(i), ra(i+1), rx(i), rx(i+1));
-                    leftresid = permute(leftresid, [3,1,2,4]);
-                    leftresid = reshape(leftresid, rx(i)*n(i), ra(i+1)*rx(i+1));
-                    lefty = phiy{i}*y1;
-                    lefty = reshape(lefty, rx(i)*n(i), ry(i+1));
-                    
-                    leftresid = [leftresid, -lefty]*Rs{i+1};
-                    [uk,sk,vk]=svd(leftresid, 'econ');
-                    uk = uk(:,1:min(kickrank, size(uk,2)));
-                elseif (strcmp(kicktype, 'chol'))
-                    leftresid = reshape(Phi1, rx(i)*rx(i), ra(i));
-                    leftresid = leftresid.';
-                    leftresid = reshape(leftresid, ra(i)*rx(i), rx(i));
-                    leftresid = leftresid*reshape(u*v.', rx(i), n(i)*rx(i+1));
-                    leftresid = reshape(leftresid, ra(i), rx(i), n(i), rx(i+1));
-                    leftresid = permute(leftresid, [1, 3, 2, 4]);
-                    leftresid = reshape(leftresid, ra(i)*n(i), rx(i)*rx(i+1));
-                    leftresid = reshape(permute(A1, [2,4,1,3]), n(i)*ra(i+1), ra(i)*n(i))*leftresid;
-                    leftresid = reshape(leftresid, n(i), ra(i+1), rx(i), rx(i+1));
-                    leftresid = permute(leftresid, [3,1,2,4]);
-                    leftresid = reshape(leftresid, rx(i)*n(i), ra(i+1)*rx(i+1));
-                    lefty = phiy{i}*y1;
-                    lefty = reshape(lefty, rx(i)*n(i), ry(i+1));
-                    
-                    leftresid1 = reshape(leftresid, rx(i)*n(i), ra(i+1), rx(i+1));
-                    leftresid1 = permute(leftresid1, [1,3,2]);
-                    leftresid1 = reshape(leftresid1, rx(i)*n(i), rx(i+1)*ra(i+1));
-                    leftresid2 = leftresid1*Rs{3,i+1};
-                    leftresid2 = leftresid2*leftresid'; % Ax*Ax' is ready
-                    
-                    % Rs2: rx2, ra2, ry2'. 
-                    leftyAx = reshape(Rs{2,i+1}, rx(i+1)*ra(i+1), ry(i+1));
-                    leftyAx = leftresid1*leftyAx;
-                    leftyAx = leftyAx*lefty'; % Ax*y' is ready
-                    % Rs1: ry2, ry2'
-                    lefty2 = lefty*Rs{1,i+1};
-                    lefty2 = lefty2*lefty'; % y*y' is ready
-                    % Finally, collect the Gramian
-                    leftresid2 = lefty2 - leftyAx - leftyAx' + leftresid2;
-                    % Inline choletsky - for fully generated Gramian
-                    uk = [];
-                    lam = [];
-                    dresid2 = diag(leftresid2);
-                    for k=1:min(kickrank, rx(i)*n(i))
-                        [vmax,imax]=max(dresid2);
-                        ucur = leftresid2(:,imax);
-                        if (k>1)
-                            ucur = ucur - uk*lam*uk(imax,:)';
-                        end;
-                        vmax = sqrt(abs(ucur(imax)));
-                        if (vmax<1e-150); break; end;
-                        ucur = ucur/vmax;
-                        dresid2 = dresid2 - ucur.^2;
-                        [uk, rv]=qr([uk, ucur], 0);
-                        lam = [[lam, zeros(k-1,1)]; zeros(1,k)];
-                        lam = lam + rv(:,k)*rv(:,k)';
-                        [rv,lam]=eig(lam);
-                        uk = uk*rv;
-                    end;
-                elseif (strcmp(kicktype, 'als'))
-                    % Phi1: rz'1, rx1, ra1, or rz'1, ry1
-                    % Phi2: rx2, ra2, rz'2, or ry2, rz'2
-                    % leftresid: m, ra*rx, lefty: m, ry
-                    % Enrichment in X
-                    leftresid = bfun3(Phi1, A1, phiza{i+1}, u*v.');
-                    leftresid = reshape(leftresid, rx(i)*n(i), rz(i+1));
-                    lefty = phiy{i}*y1;
-                    lefty = reshape(lefty, rx(i)*n(i), ry(i+1));
-                    lefty = lefty*phizy{i+1}; % m, rz - OK
-                    uk = lefty - leftresid;
-                else
-                    uk = randn(rx(i)*n(i), kickrank);
-                end;
+                
+                leftresid = reshape(Phi1, rx(i)*rx(i), ra(i));
+                leftresid = leftresid.';
+                leftresid = reshape(leftresid, ra(i)*rx(i), rx(i));
+                leftresid = leftresid*reshape(u*v.', rx(i), n(i)*rx(i+1));
+                leftresid = reshape(leftresid, ra(i), rx(i), n(i), rx(i+1));
+                leftresid = permute(leftresid, [1, 3, 2, 4]);
+                leftresid = reshape(leftresid, ra(i)*n(i), rx(i)*rx(i+1));
+                leftresid = reshape(permute(A1, [2,4,1,3]), n(i)*ra(i+1), ra(i)*n(i))*leftresid;
+                leftresid = reshape(leftresid, n(i), ra(i+1), rx(i), rx(i+1));
+                leftresid = permute(leftresid, [3,1,2,4]);
+                leftresid = reshape(leftresid, rx(i)*n(i), ra(i+1)*rx(i+1));
+                lefty = phiy{i}*y1;
+                lefty = reshape(lefty, rx(i)*n(i), ry(i+1));
+                
+                leftresid = [leftresid, -lefty]*Rs{i+1};
+                [uk,sk,vk]=svd(leftresid, 'econ');
+                uk = uk(:,1:min(kickrank, size(uk,2)));
+            
                 
                 % enrichment itself, and orthogonalization
                 [u,rv]=qr([u,uk], 0);
@@ -676,11 +471,8 @@ for swp=1:nswp
             nrmsc = nrmsc*(nrmsy(i)/(nrmsa(i)*nrmsx(i)));
             
             if (verb==2)
-                if (strcmp(kicktype, 'als'))&&(kickrank+kickrank2>0)&&(~last_sweep)
-                    fprintf('=amen_solve2=   block %d, dx: %3.3e, res: %3.3e, r: %d, |y|: %3.3e, |z|: %3.3e\n', i, dx, res_prev, r, norm(v(:)), norm(crznew(:)));
-                else
-                    fprintf('=amen_solve2=   block %d, dx: %3.3e, res: %3.3e, r: %d\n', i, dx, res_prev, r);
-                end;
+                
+                fprintf('=amen_solve2=   block %d, dx: %3.3e, res: %3.3e, r: %d\n', i, dx, res_prev, r);
             end;
             
             % Stuff back
@@ -688,12 +480,6 @@ for swp=1:nswp
             crx{i} = u;
             crx{i+1} = v;
             
-            % Update z and its projections
-            if strcmp(kicktype, 'als')&&(kickrank+kickrank2>0)&&(~last_sweep)
-                rz(i+1) = rznew;
-                phiza{i+1} = compute_next_Phi(phiza{i}, crznew, crA{i}, crx{i}, 'lr', nrmsa(i));
-                phizy{i+1} = compute_next_Phi(phizy{i}, crznew, [], cry{i}, 'lr', nrmsy(i));
-            end;
         else % i==d
             % Just stuff back the last core
 %             sol = u(:,1:r)*diag(s(1:r))*v(:,1:r)';
@@ -743,11 +529,7 @@ end;
 
 x = cell2core(x, crx);
 if (nargout>2)
-    if (strcmp(kicktype, 'als'))&&(kickrank>0)
-        z = cell2core(tt_tensor, crz);
-    else
-        z=[];
-    end;
+    z=[];
 end;
 
 end
