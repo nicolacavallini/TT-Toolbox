@@ -1,4 +1,4 @@
-function [x,testdata,z]=amen_modified(A, y, tol, varargin)
+function [x,testdata]=amen_modified(A, y, tol, varargin)
 
 
 if (~isempty(varargin))
@@ -17,9 +17,13 @@ nswp=50;
 local_restart=40;
 local_iters=2;
 
-local_prec = '';
-local_prec_char = 0;
-% local_prec = 'jacobi';
+local_prec = 'jacobi';
+
+v = [0,1,2,3];
+k = ["jacobi","cjacobi","ljacobi","rjacobi"];
+
+preconditioner_dict = dictionary(k,v);
+
 
 rmax=1000;
 trunc_norm = 'residual';
@@ -28,7 +32,7 @@ trunc_norm_char = 1;
 
 tol_exit = [];
 
-verb=1;
+
 kickrank = 4;
 kickrank2 = 0;
 x=[];
@@ -58,17 +62,11 @@ end;
 if (~isempty(amengl_nswp))
     nswp = amengl_nswp;
 end;
-if (~isempty(amengl_resid_damp))
-    resid_damp = amengl_resid_damp;
-end;
 if (~isempty(amengl_max_full_size))
     max_full_size = amengl_max_full_size;
 end;
 if (~isempty(amengl_trunc_norm))
     trunc_norm = amengl_trunc_norm;
-end;
-if (~isempty(amengl_verb))
-    verb = amengl_verb;
 end;
 if (~isempty(amengl_plusrank))
     kickrank = amengl_plusrank;
@@ -100,8 +98,6 @@ for i=1:2:length(varargin)-1
             crz=varargin{i+1};
         case 'obs'
             obs=varargin{i+1};
-        case 'verb'
-            verb=varargin{i+1};
         case 'local_prec'
             local_prec=varargin{i+1};
         case 'local_restart'
@@ -114,8 +110,6 @@ for i=1:2:length(varargin)-1
             kickrank2=varargin{i+1};            
         case  'max_full_size'
             max_full_size=varargin{i+1};
-        case 'resid_damp'
-            resid_damp = varargin{i+1};
         case 'trunc_norm'
             trunc_norm = varargin{i+1};
         case 'tol_exit'
@@ -128,10 +122,7 @@ for i=1:2:length(varargin)-1
     end
 end
 
-if (strcmp(local_prec, 'cjacobi')); local_prec_char = 1;  end;
-if (strcmp(local_prec, 'ljacobi')); local_prec_char = 2;  end;
-if (strcmp(local_prec, 'rjacobi')); local_prec_char = 3;  end;
-% if (strcmp(trunc_norm, 'fro')); trunc_norm_char = 0; end;
+
 
 
 if (A.n~=A.m)
@@ -167,17 +158,8 @@ phiy = cell(d+1,1); phiy{1}=1; phiy{d+1}=1;
 
 
 % QR factors of the residual
-
-
 Rs = cell(d+1,1);
 Rs{1} = 1; Rs{d+1}=1;
-
-
-if (~isempty(obs))
-    robs = obs.r;
-    obs = core2cell(obs);
-end;
-
 
 % Norm extractors
 nrmsa = ones(d-1,1);
@@ -214,19 +196,9 @@ for swp=1:nswp
         cr = crx{i};
         cr = reshape(cr, rx(i), n(i)*rx(i+1));
         cr = cr.';
-        % Add a linear functional if we track such invariant
-        if (~isempty(obs))
-            crobs = reshape(obs{i}, robs(i)*n(i), robs(i+1));
-            crobs = crobs*phiobs.';
-            crobs = reshape(crobs, robs(i), n(i)*rx(i+1));
-            crobs = crobs.';
-            cr = [cr,crobs];
-        end;
+        
         [cr, rv]=qr(cr, 0);        
-        if (~isempty(obs))
-            phiobs = rv(:,rx(i)+1:rx(i)+robs(i));
-            rv = rv(:,1:rx(i));
-        end;
+        
         cr2 = crx{i-1};
         cr2 = reshape(cr2, rx(i-1)*n(i-1), rx(i));
         cr2 = cr2*(rv.');
@@ -330,20 +302,11 @@ for swp=1:nswp
             res_new = norm(B*sol-rhs)/norm_rhs;
             
         else % Structured solution.
-            
             res_prev = norm(bfun3(Phi1, A1, Phi2, sol_prev) - rhs)/norm_rhs;
-            
-            if (norm_rhs>0)
-                
-                sol = solve3d_2ml(Phi1, A1, Phi2, rhs, real_tol*norm_rhs, sol_prev, local_prec_char, local_restart, local_iters);
-                
-                
-                res_new = norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;
-            else
-                sol = zeros(numel(sol_prev), 1);
-                res_new = 0;
-            end;
-            
+
+            aux = preconditioner_dict(local_prec);
+            sol = solve3d_2ml(Phi1, A1, Phi2, rhs, real_tol*norm_rhs, sol_prev, aux, local_restart, local_iters);
+            res_new = norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;    
         end;
         
         if (res_prev/res_new<resid_damp)&&(res_new>real_tol)
@@ -434,17 +397,7 @@ for swp=1:nswp
             end;
             r = size(u,2);            
             % Add a linear functional to the frame
-            if (~isempty(obs))
-                crobs = reshape(obs{i}, robs(i), n(i)*robs(i+1));
-                crobs = phiobs*crobs;
-                crobs = reshape(crobs, rx(i)*n(i), robs(i+1));
-                u = [u,crobs];
-                [u,rv]=qr(u, 0);
-                phiobs = rv(:,r+1:r+robs(i+1));
-                rv = rv(:,1:r);
-                v = v*rv.';
-                r = size(u,2);
-            end;
+            
             
             cr2 = crx{i+1};
             cr2 = reshape(cr2, rx(i+1), n(i+1)*rx(i+2));
@@ -470,11 +423,6 @@ for swp=1:nswp
             % Add new scales
             nrmsc = nrmsc*(nrmsy(i)/(nrmsa(i)*nrmsx(i)));
             
-            if (verb==2)
-                
-                fprintf('=amen_solve2=   block %d, dx: %3.3e, res: %3.3e, r: %d\n', i, dx, res_prev, r);
-            end;
-            
             % Stuff back
             rx(i+1) = r;
             crx{i} = u;
@@ -487,19 +435,6 @@ for swp=1:nswp
             crx{i} = sol;
         end;
         
-        if (verb>2)
-            testdata{1}(i,swp) = toc(t_amen_solve);
-            if (verb>3)||(i==d) % each microstep is returned only if really asked for
-                % Otherwise the memory will blow up
-                x = cell2core(x, crx)*exp(sum(log(nrmsx))); % for test
-                testdata{2}{i,swp} = x;
-            end;
-        end;
-        
-    end;
-    
-    if (verb>0)
-        fprintf('=amen_solve= sweep %d, max_dx: %3.3e, max_res: %3.3e, max_rank: %g\n', swp, max_dx, max_res, max(rx));
     end;
     
     if (last_sweep)
@@ -507,16 +442,14 @@ for swp=1:nswp
     end;
     
     if (strcmp(trunc_norm, 'fro'))
-        if (max_dx<tol_exit)&&(verb<3)
+        if max_dx<tol_exit
             last_sweep = true;
         end;
     else
-        if (max_res<tol_exit)&&(verb<3)
+        if max_res<tol_exit
             last_sweep = true;
         end;
     end;
-    
-    
 end;
 
 % Recover the scales
@@ -528,9 +461,6 @@ for i=1:d
 end;
 
 x = cell2core(x, crx);
-if (nargout>2)
-    z=[];
-end;
 
 end
 
