@@ -1,21 +1,10 @@
-function [x,testdata]=amen_modified(A, y, tol,x0)
+function [x,testdata]=amen_modified(A, y, tol_exit,x0)
 
 % Inner parameters
 
 resid_damp = 2; % Truncation error to true residual treshold
 
-
-local_prec = 'jacobi';
-
-v = [0,1,2,3];
-k = ["jacobi","cjacobi","ljacobi","rjacobi"];
-
-preconditioner_dict = dictionary(k,v);
-
 rmax=1000;
-
-tol_exit = [];
-
 
 kickrank = 10;
 x=x0;
@@ -24,13 +13,8 @@ crz = [];
 symm = false;
 
 nswp = 4;
-max_full_size = 50;
+max_full_size = 5000;
 trunc_norm = 'fro';
-
-
-if (isempty(tol_exit))
-    tol_exit = tol;
-end;
 
 if (A.n~=A.m)
     error(' AMEn does not know how to solve rectangular systems!\n Use amen_solve2(ctranspose(A)*A, ctranspose(A)*f, tol) instead.');
@@ -188,7 +172,11 @@ for swp=1:nswp
         
         % We need slightly better accuracy for the solution, since otherwise
         % the truncation will catch the noise and report the full rank
-        real_tol = (tol/sqrt(d))/resid_damp;
+        real_tol = (tol_exit/sqrt(d))/resid_damp;
+
+        equivalent_full_size = rx(i)*n(i)*rx(i+1);
+
+        disp(strcat("equivalent_full_size = ",num2str(equivalent_full_size)))
         
         if (rx(i)*n(i)*rx(i+1)<max_full_size) % Full solution
             %      |     |    |
@@ -212,12 +200,10 @@ for swp=1:nswp
         else % Structured solution.
             res_prev = norm(bfun3(Phi1, A1, Phi2, sol_prev) - rhs)/norm_rhs;
 
-            aux = preconditioner_dict(local_prec);
-            
             local_restart=40;
             local_iters=2;
 
-            sol = solve3d_2ml(Phi1, A1, Phi2, rhs, real_tol*norm_rhs, sol_prev, aux, local_restart, local_iters);
+            sol = local_solve(Phi1, A1, Phi2, rhs, real_tol*norm_rhs, sol_prev, local_restart, local_iters);
             res_new = norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;    
         end;
         
