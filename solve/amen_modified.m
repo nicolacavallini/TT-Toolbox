@@ -1,67 +1,4 @@
 function [x,testdata,z]=amen_modified(A, y, tol, varargin)
-%Solution of linear systems in TT-format via DMRG iteration
-%   [X,testdata,z]=AMEN_SOLVE2(A,Y,TOL,OPTIONS) Attempts to solve the linear
-%   system A*X = Y with accuracy/residual TOL using the AMEn iteration.
-%   Matrix A has to be given in the TT-format, right-hand side Y should be
-%   given in the TT-format also. Options are provided in form
-%   'PropertyName1',PropertyValue1,'PropertyName2',PropertyValue2 and so
-%   on. The parameters are set to default (in brackets in the following)
-%   The list of option names and default values:
-%       o x0 - initial approximation [random rank-2 tensor]
-%       o nswp - maximal number of sweeps [50]
-%       o rmax - maximal TT-rank of the solution [1000]
-%       o verb - verbosity level, 0-silent, 1-sweep info, 2-block info [1]
-%       o max_full_size - maximal size of the local matrix for the full solver [50]
-%       o local_prec - local preconditioner: '' (no prec.), 'ljacobi',
-%         'cjacobi', 'rjacobi' ['']
-%       o local_iters - number of local gmres restarts [2]
-%       o local_restart - dimension of local gmres [40]
-%       o kickrank - compression rank of the residual Z, i.e. enrichment
-%         size [4]
-%       o kicktype - how to truncate Z: 'svd', 'als' or 'rand' ['als']
-%       o kickrank2 - size of the secondary random enrichment for Z 
-%         (kicktype=='als' only) [0]
-%       o ismex - shall we use the MEX lib solve3d_2 for local solution
-%         instead of gmres. It safely switches off automatically if
-%         solve3d_2 is not found in the MATLAB path, as well as on complex
-%         data. To obtain solve3d_2, you need to compile it in the
-%         TT-Toolbox/fmex directory, please follow instructions there [true]
-%       o resid_damp - solve local problems with accuracy tol/resid_damp.
-%         Larger value may reduce a spurious noise from inexact local
-%         solutions, but increase CPU time [2]
-%       o trunc_norm - truncate in either Frob. ('fro'), or residual norm
-%         ('residual') ['residual']
-%       o z0 - initial guess for Z (kicktype=='als' only). 
-%       o tol_exit - stopping difference between consecutive iterations 
-%         (if trunc_norm=='fro') or residual (trunc_norm=='resid') [tol]
-%       o symm - shall we symmetrize the problem (A'Ax=A'y) before 
-%         the solution [false]
-%
-%       Example:
-%           d=8; f=8;
-%           mat=tt_qlaplace_dd(d*ones(1,f)); %Laplace in the QTT-format
-%           rhs=tt_ones(2,d*f); % Right-hand side of all ones
-%           sol = amen_solve2(mat, rhs, 1e-5); % solve the Poisson eqn.
-%
-%********
-%   References:
-%   S. Dolgov, D. Savostyanov.
-%   http://arxiv.org/abs/1301.6068 
-%   http://arxiv.org/abs/1304.1222
-%   
-%   Please send feedback to: {sergey.v.dolgov,dmitry.savostyanov}@gmail.com
-%
-%********
-%
-% TT-Toolbox 2.2, 2009-2012
-%
-%This is TT Toolbox, written by Ivan Oseledets et al.
-%Institute of Numerical Mathematics, Moscow, Russia
-%webpage: http://spring.inm.ras.ru/osel
-%
-%For all questions, bugs and suggestions please mail
-%ivan.oseledets@gmail.com
-%---------------------------
 
 
 if (~isempty(varargin))
@@ -90,8 +27,6 @@ trunc_norm_char = 1;
 % trunc_norm = 'fro';
 
 tol_exit = [];
-
-ismex = true;
 
 % kicktype = 'svd';
 kicktype = 'als';
@@ -184,8 +119,6 @@ for i=1:2:length(varargin)-1
             kickrank2=varargin{i+1};            
         case 'kicktype'
             kicktype=varargin{i+1};
-        case 'ismex'
-            ismex=varargin{i+1};
         case  'max_full_size'
             max_full_size=varargin{i+1};
         case 'resid_damp'
@@ -207,11 +140,6 @@ if (strcmp(local_prec, 'ljacobi')); local_prec_char = 2;  end;
 if (strcmp(local_prec, 'rjacobi')); local_prec_char = 3;  end;
 % if (strcmp(trunc_norm, 'fro')); trunc_norm_char = 0; end;
 
-% Disable MEX if it does not exist
-if (ismex)&&(exist('solve3d_2', 'file')<2)
-    warning('MEX local solver is not found, disabled');
-    ismex = false;
-end;
 
 if (A.n~=A.m)
     error(' AMEn does not know how to solve rectangular systems!\n Use amen_solve2(ctranspose(A)*A, ctranspose(A)*f, tol) instead.');
@@ -363,10 +291,6 @@ for swp=1:nswp
         
         [phia{i},nrmsa(i-1)] = compute_next_Phi(phia{i+1}, cr, crA{i}, cr, 'rl');
         [phiy{i},nrmsy(i-1)] = compute_next_Phi(phiy{i+1}, cr, [], cry{i}, 'rl');
-        if ((~isreal(phia{i}))||(~isreal(phiy{i})))&&(ismex)
-            warning('Complex data detected, turning MEX local solver off');
-            ismex = false;
-        end;
         
         % Add new scales
         nrmsc = nrmsc*(nrmsy(i-1)/(nrmsa(i-1)*nrmsx(i-1)));
@@ -495,11 +419,9 @@ for swp=1:nswp
             res_prev = norm(bfun3(Phi1, A1, Phi2, sol_prev) - rhs)/norm_rhs;
             
             if (norm_rhs>0)
-                if (~ismex)
-                    sol = solve3d_2ml(Phi1, A1, Phi2, rhs, real_tol*norm_rhs, sol_prev, local_prec_char, local_restart, local_iters);
-                else % use MEX
-                    sol = solve3d_2(Phi1, A1, Phi2, rhs, real_tol, trunc_norm_char, sol_prev, local_prec_char, local_restart, local_iters, 0);
-                end;
+                
+                sol = solve3d_2ml(Phi1, A1, Phi2, rhs, real_tol*norm_rhs, sol_prev, local_prec_char, local_restart, local_iters);
+                
                 
                 res_new = norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;
             else
