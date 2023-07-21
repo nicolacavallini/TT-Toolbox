@@ -1,8 +1,13 @@
 function [x,testdata]=amen_modified(A, y, tol_exit,x0)
 
-% Inner parameters
+d = y.d;
 
+% We need slightly better accuracy for the solution, since otherwise
+% the truncation will catch the noise and report the full rank
 resid_damp = 2; % Truncation error to true residual treshold
+corrected_tol = (tol_exit/sqrt(d))/resid_damp;
+
+
 
 rmax=1000;
 
@@ -13,14 +18,14 @@ crz = [];
 symm = false;
 
 nswp = 4;
-max_full_size = 5000;
+max_full_size = 20000;
 trunc_norm = 'fro';
 
 if (A.n~=A.m)
     error(' AMEn does not know how to solve rectangular systems!\n Use amen_solve2(ctranspose(A)*A, ctranspose(A)*f, tol) instead.');
 end;
 
-d = y.d;
+
 n = A.n;
 if (isempty(x))
     x = tt_rand(n, A.d, 2, -1); %RL orthogonal
@@ -170,14 +175,8 @@ for swp=1:nswp
         rhs = reshape(rhs, rx(i)*n(i)*rx(i+1),1);
         norm_rhs = norm(rhs);
         
-        % We need slightly better accuracy for the solution, since otherwise
-        % the truncation will catch the noise and report the full rank
-        real_tol = (tol_exit/sqrt(d))/resid_damp;
-
         equivalent_full_size = rx(i)*n(i)*rx(i+1);
 
-        disp(strcat("equivalent_full_size = ",num2str(equivalent_full_size)))
-        
         if (rx(i)*n(i)*rx(i+1)<max_full_size) % Full solution
             %      |     |    |
             % B = Phi1 - A1 - Phi2
@@ -203,11 +202,11 @@ for swp=1:nswp
             local_restart=40;
             local_iters=2;
 
-            sol = local_solve(Phi1, A1, Phi2, rhs, real_tol*norm_rhs, sol_prev, local_restart, local_iters);
+            sol = local_solve(Phi1, A1, Phi2, rhs, corrected_tol*norm_rhs, sol_prev, local_restart, local_iters);
             res_new = norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;    
         end;
         
-        if (res_prev/res_new<resid_damp)&&(res_new>real_tol)
+        if (res_prev/res_new<resid_damp)&&(res_new>corrected_tol)
             fprintf('--warn-- the residual damp was smaller than in the truncation\n');
             % Bas things may happen. We are to introduce an error definetly
             % larger than the improvement by the local solution. Usually it
@@ -232,7 +231,7 @@ for swp=1:nswp
             s = diag(s);
             
             if (strcmp(trunc_norm, 'fro')) % We are happy with L2 truncation (when? but let it be)
-                r = my_chop2(s, real_tol*resid_damp*norm(s));
+                r = my_chop2(s, corrected_tol*resid_damp*norm(s));
             else
                for r=(min(rx(i)*n(i),rx(i+1))-1):-1:1
                    cursol = u(:,1:r)*diag(s(1:r))*v(:,1:r)';
@@ -242,7 +241,7 @@ for swp=1:nswp
                    else
                        res = norm(bfun3(Phi1, A1, Phi2, cursol)-rhs)/norm_rhs;
                    end;
-                   if (res>max(real_tol*resid_damp, res_new))
+                   if (res>max(corrected_tol*resid_damp, res_new))
                        break;
                    end;
                end;
@@ -334,20 +333,12 @@ for swp=1:nswp
         end;
         
     end;
-    
-    if (last_sweep)
-        break;
-    end;
-    
-    if (strcmp(trunc_norm, 'fro'))
-        if max_dx<tol_exit
-            last_sweep = true;
-        end;
-    else
-        if max_res<tol_exit
-            last_sweep = true;
-        end;
-    end;
+
+    sol_tmp = evaluate_sol(nrmsx,d,crx,x);
+
+    res_tmp = evaluate_residual(A,y,sol_tmp);
+
+    disp(norm(res_tmp))
 end;
 
 % Recover the scales
@@ -360,6 +351,25 @@ end;
 
 x = cell2core(x, crx);
 
+end
+
+function sol = evaluate_sol(some_norm,dim,some_tmp_sol,previus_sol)
+    % Recover the scales
+    % Distribute norms equally...
+    some_other_norm = exp(sum(log(some_norm))/dim);
+    % ... and plug them into x
+    for i=1:dim
+        some_tmp_sol{i} = some_tmp_sol{i}*some_other_norm;
+    end;
+
+    sol = cell2core(previus_sol, some_tmp_sol);
+return
+end
+
+function res = evaluate_residual(matrix,rhs,sol)
+    res = mtimes(matrix,sol);
+    res = minus(rhs,res);
+return
 end
 
 % new
