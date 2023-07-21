@@ -1,11 +1,11 @@
 function [x,testdata]=amen_modified(A, y, tol_exit,x0)
 
-d = y.d;
+dim = y.d;
 
 % We need slightly better accuracy for the solution, since otherwise
 % the truncation will catch the noise and report the full rank
 resid_damp = 2; % Truncation error to true residual treshold
-corrected_tol = (tol_exit/sqrt(d))/resid_damp;
+corrected_tol = (tol_exit/sqrt(dim))/resid_damp;
 
 
 
@@ -49,28 +49,28 @@ else
 end;
 
 % Partial projections X'AX and X'Y
-phia = cell(d+1,1); phia{1}=1; phia{d+1}=1;
-phiy = cell(d+1,1); phiy{1}=1; phiy{d+1}=1;
+phia = cell(dim+1,1); phia{1}=1; phia{dim+1}=1;
+phiy = cell(dim+1,1); phiy{1}=1; phiy{dim+1}=1;
 % Try to compute the low-rank appr. to residual on-the-fly
 
 
 % QR factors of the residual
-Rs = cell(d+1,1);
-Rs{1} = 1; Rs{d+1}=1;
+Rs = cell(dim+1,1);
+Rs{1} = 1; Rs{dim+1}=1;
 
 % Norm extractors
-nrmsa = ones(d-1,1);
-nrmsy = ones(d-1,1);
-nrmsx = ones(d-1,1);
+nrmsa = ones(dim-1,1);
+nrmsy = ones(dim-1,1);
+nrmsx = ones(dim-1,1);
 % We will need to correct y by |y|/(|A||x|).
 % % Store the logarithms of norms in nrmsc
 nrmsc = 1;
 
 % This is some convergence output for test purposes
 testdata = cell(3,1);
-testdata{1} = zeros(d, nswp); % CPU times
-testdata{2} = cell(d, nswp); % interm. solutions
-testdata{3} = zeros(d, nswp); % local residuals (res_prev)
+testdata{1} = zeros(dim, nswp); % CPU times
+testdata{2} = cell(dim, nswp); % interm. solutions
+testdata{3} = zeros(dim, nswp); % local residuals (res_prev)
 
 
 last_sweep = false;
@@ -81,7 +81,7 @@ t_amen_solve = tic;
 for swp=1:nswp
     % Orthogonalization
     phiobs = 1;    
-    for i=d:-1:2
+    for i=dim:-1:2
         % Update the Z in the ALS version
         
         if (swp>1)
@@ -130,10 +130,10 @@ for swp=1:nswp
         Ax1 = permute(Ax1, [1, 4, 2, 3, 5]);
         Ax1 = reshape(Ax1, ra(i)*rx(i), n(i), ra(i+1)*rx(i+1));
         r1 = ra(i)*rx(i)+ry(i); r2 = ra(i+1)*rx(i+1)+ry(i+1);
-        if (i==d); r2 = 1; end;
+        if (i==dim); r2 = 1; end;
         res1 = zeros(r1, n(i), r2);
         res1(1:ra(i)*rx(i), :, 1:ra(i+1)*rx(i+1)) = Ax1;
-        if (i==d)
+        if (i==dim)
             res1(ra(i)*rx(i)+1:r1, :, 1) = cry{i};
         else
             res1(ra(i)*rx(i)+1:r1, :, ra(i+1)*rx(i+1)+1:r2) = cry{i};
@@ -155,7 +155,7 @@ for swp=1:nswp
     max_dx = 0;
     phiobs = 1;
     
-    for i=1:d
+    for i=1:dim
         % Extract partial projections (and scales)
         Phi1 = phia{i}; Phi2 = phia{i+1};
         % Phi1: rx'1, rx1, ra1, or rx'1, ry1
@@ -226,7 +226,7 @@ for swp=1:nswp
         % Truncation
         sol = reshape(sol, rx(i)*n(i), rx(i+1));
         
-        if (kickrank>=0)&&(i<d)
+        if (kickrank>=0)&&(i<dim)
             [u,s,v]=svd(sol, 'econ');
             s = diag(s);
             
@@ -262,7 +262,7 @@ for swp=1:nswp
         v = conj(v(:,1:r))*diag(s(1:r));
         
         
-        if (i<d) %  enrichment, etc
+        if (i<dim) %  enrichment, etc
             if (kickrank>0)&&(~last_sweep)
                 % Smarter kick: low-rank PCA in residual
                 % Matrix: Phi1-A{i}, rhs: Phi1-y{i}, sizes rx(i)*n - ra(i+1)
@@ -325,7 +325,7 @@ for swp=1:nswp
             crx{i} = u;
             crx{i+1} = v;
             
-        else % i==d
+        else % i==dim
             % Just stuff back the last core
 %             sol = u(:,1:r)*diag(s(1:r))*v(:,1:r)';
             sol = reshape(sol, rx(i), n(i), rx(i+1));
@@ -334,7 +334,7 @@ for swp=1:nswp
         
     end;
 
-    sol_tmp = evaluate_sol(nrmsx,d,crx,x);
+    sol_tmp = evaluate_sol(nrmsx,dim,crx,x);
 
     res_tmp = evaluate_residual(A,y,sol_tmp);
 
@@ -343,9 +343,9 @@ end;
 
 % Recover the scales
 % Distribute norms equally...
-nrmsx = exp(sum(log(nrmsx))/d);
+nrmsx = exp(sum(log(nrmsx))/dim);
 % ... and plug them into x
-for i=1:d
+for i=1:dim
     crx{i} = crx{i}*nrmsx;
 end;
 
