@@ -1,47 +1,7 @@
-function [x, somedata]=dmrg_solve2(A, y, eps,varargin)
-%Solution of linear systems in TT-format via DMRG iteration
-%   [X,SWEEPS]=DMRG_SOLVE2(A,Y,EPS,OPTIONS) Attempts to solve the linear
-%   system A*X = Y with accuracy EPS using the two-sided DMRG iteration.
-%   Matrix A has to be given in the TT-format, right-hand side Y should be
-%   given in the TT-format also. Options are provided in form
-%   'PropertyName1',PropertyValue1,'PropertyName2',PropertyValue2 and so
-%   on. The parameters are set to default (in brackets in the following) 
-%   The list of option names and default values are:
-%       o x0 - initial approximation [random rank-2 tensor] 
-%       o P - preconditioner  [I]
-%       o nswp - maximal number of DMRG sweeps [10]
-%       o rmax - maximal TT-rank of the solution [1000]
-%       o verb - verbosity level, 0-silent, 1-sweep info, 2-block info [1]
-%       o max_full_size - maximal size of the local matrix to full solver 
-%       [2500]
-%       o local_prec: Local preconditioner, 'als' - ALS-Richardson
-%       iteration, 'selfprec' (Saad selfpreconditioner) ['als']
-%       o prec_compr - compression for local precs [1e-3]
-%       o prec_tol - tolerance for local precs [1e-1]
-%       o prec_iters - number of local iterations [15]
-%       o use_self_prec - Use self_prec [ true | {false} ]
-%       o gmres_iters - number of local gmres restarts [2]
-%       o nrestart - dimension of local gmres [40]
-%       Example:
-%           d=8; f=8; 
-%           mat=tt_qlaplace_dd(d*ones(1,f)); %Laplace in the QTT-format
-%           rhs=tt_ones(2,d*f); Right-hand side of all ones
-%           sol=dmrg_solve2(mat,rhs,1e-6);
-%
-%
-% TT-Toolbox 2.2, 2009-2012
-%
-%This is TT Toolbox, written by Ivan Oseledets et al.
-%Institute of Numerical Mathematics, Moscow, Russia
-%webpage: http://spring.inm.ras.ru/osel
-%
-%For all questions, bugs and suggestions please mail
-%ivan.oseledets@gmail.com
-%---------------------------
-
+function [x, somedata]=dmrg_solve2(A, y, tolerance)
 
 % Inner parameters
-max_full_size=2500;
+max_full_size=20000;
 prec_compr=1e-3;
 prec_tol=1e-1;
 prec_iters=10;
@@ -67,108 +27,21 @@ local_prec = 'selfprec';
 local_format = 'full';
 % local_format = 'tt';
 rmax=1000;
-tol=eps;
+tol=tolerance;
 verb=1;
 kickrank = 2;
-x0=[];
-P=[];
-for i=1:2:length(varargin)-1
-    switch lower(varargin{i})
-        case 'nswp'
-            nswp=varargin{i+1};
-        case 'rmax'
-            rmax=lower(varargin{i+1});
-        case 'x0'
-            x0=varargin{i+1};
-        case 'verb'
-            verb=varargin{i+1};
-        case 'p'
-            P=varargin{i+1};
-        case 'tol'
-            tol=varargin{i+1};
-        case 'local_prec'
-            local_prec=varargin{i+1};
-        case 'nrestart'
-            nrestart=varargin{i+1};
-        case 'gmres_iters'
-            gmres_iters=varargin{i+1};
-        case 'kickrank'
-            kickrank=varargin{i+1};
-        case  'max_full_size'
-            max_full_size=varargin{i+1};
-        case 'prec_compr'
-            prec_compr=varargin{i+1};
-        case 'prec_tol'
-            prec_tol=varargin{i+1};
-        case 'prec_iters'
-            prec_iters=varargin{i+1};
-        case 'use_self_prec'
-            use_self_prec=varargin{i+1};
-        case 'ddpow'
-            ddpow=varargin{i+1};
-        case 'ddrank'
-            ddrank=varargin{i+1};
-        case 'd_pow_check'
-            d_pow_check=varargin{i+1};
-        case 'bot_conv'
-            bot_conv=varargin{i+1};
-        case 'top_conv'
-            top_conv=varargin{i+1};
-        case 'min_dpow'
-            min_dpow=varargin{i+1};
-        case 'min_drank'
-            min_drank=varargin{i+1};
-        otherwise
-            error('Unrecognized option: %s\n',varargin{i});
-    end
-end
+x0=y;
+x=x0;
+P = core(tt_eye(tt_size(y), d));;
 
-input_is_tt_tensor = 0;
 
-if ( isa(y,'tt_tensor') )
-  y=core(y);
-  input_is_tt_tensor = 1;
-end
 
-if (isa(y, 'tt_tensor'))
-    y=core(y);
-    input_is_tt_tensor = 1;
-end;
-if ( isa(A,'tt_matrix') )
-%   ttA=A.tt;
-%   dA=ttA.d;
-  A=core(A);
-  input_is_tt_tensor = 1;
-  %if (isempty(x0))
-  %    x0=tt_random(tt_size(y), A.tt.d, 2);
-  %end;
-% else
-%    dA=numel(A);
-   % if (isempty(x0))
-   %     x0=tt_random(tt_size(y), max(size(A)), 2);
-   % end;
-end
-%   x0=tt_random(tt_size(y),dA,2);
-if (isempty(x0))
-    x0=tt_random(tt_size(y), max(size(y)), 2);
-end;
-if ( isa(P,'tt_matrix') )
-  P=core(P);
-  input_is_tt_tensor = 1;
-end;
-if ( isa(x0,'tt_tensor') )
-  x0=core(x0);
-  input_is_tt_tensor = 1;
-end
 
-%nrmF=sqrt(tt_dot(y,y));
+
 
 d=size(A,1);
 
-if ( isempty(P) )
-   P = core(tt_eye(tt_size(y), d));
-end
-x=x0;
+
 
 x{1}=reshape(x{1}, size(x{1},1), 1, size(x{1},2));
 y{1}=reshape(y{1}, size(y{1},1), 1, size(y{1},2));
@@ -181,7 +54,7 @@ dx_old = ones(d,1);
 dx = zeros(d,1);
 % artificial rank additions
 drank = ones(d,1)*min_drank;
-% d-power for stronger compression eps./(d.^dpows)
+% d-power for stronger compression tolerance./(d.^dpows)
 dpows = ones(d,1)*min_dpow;
 
 %  chkvec = tt_random(tt_size(y), max(size(y)), kickrank);
@@ -339,8 +212,8 @@ for swp=1:nswp
         B = reshape(B, rxn1,rxm1,m1,ra2,k1,rp2);
         B = permute(B, [1 5 2 3 6 4]);
         B = reshape(B, rxn1*k1*rxm1*m1, rp2*ra2);
-%         This is the first term of tensor-structured matrix B \otimes B2
-%         Now, the second
+        % This is the first term of tensor-structured matrix B \otimes B2
+        %  Now, the second
         B2 = permute(phAold, [1 2 4 3]);
         B2 = reshape(B2, rxn3*rp3*rxm3, ra3);
         a2 = reshape(A{i}, n2*m2*ra2, ra3);
@@ -353,25 +226,7 @@ for swp=1:nswp
         B2 = reshape(B2, rxn3, rxm3, m2, ra2, k2, rp2);
         B2 = permute(B2, [5 1 3 2 6 4]);
         B2 = reshape(B2, k2*rxn3*m2*rxm3, rp2*ra2);
-        % Now, compress inner rank rp2*ra2 --- what is this ???
-        %Modify it by random noise, since sometime MATLAB QR
-        %fails
-        %B2=B2+max(abs(B2(:)))*randn(size(B2))*1e-16; Kill all humans for
-        %such code
-
-%         [Q,R]=qr(B2,0);
-%
-%         rnew = min(k2*rxn3*m2*rxm3, rp2*ra2);
-%         B2 = reshape(Q, k2*rxn3*m2*rxm3, rnew);
-%         B = B*(R.'); % size rxn1*rxm1*k1*m1*rnew
-%
-%         B = reshape(B, rxn1*k1*rxm1*m1, rnew);
-%         [U,S,V]=svd(B, 'econ');
-%         S = diag(S);
-%         rB = my_chop2(S, 1e-12*norm(S)); % We don't know the cond(B), so let's obtain almost exact compression
-%         B = U(:,1:rB);
-%         V = V(:,1:rB)*diag(S(1:rB)); % size rnew*rB
-%         B2 = B2*conj(V); % size k2*rxn3*m2*rxm3*rB
+        
         rB=rp2*ra2;
         MatVec='bfun2';
         if (((rxn1*k1*k2*rxn3<max_full_size))||(rB>max(rxn1*k1, rxn3*k2)))&&(strcmp(local_format, 'full'))
@@ -406,16 +261,16 @@ for swp=1:nswp
         real_tol = (tol/(d^dpows(i)))/trunc_to_true;
 
         if (strcmp(local_format, 'tt'))
-            mv = @(vec,eps,mr)bfun3(B,vec,eps,mr);
+            mv = @(vec,tolerance,mr)bfun3(B,vec,tolerance,mr);
         else
             if (strcmp(MatVec, 'bfun2'))
                 mv=@(vec)bfun2(B, vec, rxm1,m1,m2,rxm3,rxn1,k1,k2,rxn3);
                 mv_t=@(vec)bfun2_t(B, vec, rxm1,m1,m2,rxm3,rxn1,k1,k2,rxn3);
-                %mv1=@(vec)bfun2(B, vec, rxm1,m1,m2,rxm3,rxn1,k1,k2,rxn3)+tau(i)*vec;
+                
             else
                 mv = @(vec)(B*vec);
                 mv_t = @(vec)(B'*vec);
-                %mv1 = @(vec)(B*vec+tau(i)*vec);
+                
             end;
         end;
 
@@ -433,42 +288,15 @@ for swp=1:nswp
         % We will solve the system only if res_prev>0.1*max_res_prev
         if (~last_sweep)&&(res_prev>bs_treshold*max_res_old)
             if (strcmp(MatVec,'full'))
-                
-%                 ev=eig(B);
-%                 ev1 = max(ev);
-%                 evn = min(ev);
-%                 [v1,ev1]=eigs(B'*B, [], 1, 'lr');
-%                 [vn,evn]=eigs(B'*B, [], 1, 'sr');                
-%                 somedata{2}(i, swp) = cond(B);
+                disp("FULL LINEAR SYSTEM")
                 somedata{3}(i, swp) = res_prev;
-%                 fprintf('i=%d, cond(B): %g\n', i, somedata{2}(i, swp));
-%                 keyboard;
-                %             sol = pinv(B)*rhs;
-                %             sol = (B'*B+tol^2*max(max(abs(B'*B)))*eye(size(B)))\(B'*rhs);
                 sol = B \ rhs;
-                %             sol = (B'*B)\(B'*rhs);
+                
                 res=B*sol;
                 res_true = norm(res-rhs)/norm(rhs);
             else
-                %Ax_{k+1}+tau*x_k=rhs+tau*x_k
-                %(Ax_{k+1}+tau*I)x_{k+1}=rhs+tau*x_k
-%                 [sol_new,flg] = gmres(mv1, rhs+tau(i)*sol_prev, nrestart, real_tol, 2, [], [], sol_prev);
-%                 if( flg == 0)
-%                     tau(i)=tau(i)/10;
-%                 else
-%                     tau(i)=tau(i)*4;
-%                 end
-
-%                    keyboard;
-%                 [v1,ev1]=eigs(@(vec)(mv_t(mv(vec))), rxn1*k1*k2*rxn3, 1, 'lr');
-%                 [vn,evn]=eigs(@(vec)(mv_t(mv(vec))), rxn1*k1*k2*rxn3, 1, 'sr');
-%                 somedata{2}(i, swp) = sqrt(ev1/evn);
-%                 fprintf('i=%d, cond(B): %g\n', i, somedata{2}(i, swp));
-
                 if (strcmp(local_format, 'full'))
                     [sol_new,flg] = gmres(mv, rhs, nrestart, real_tol, 2, [], [], sol_prev);
-                    %[dsol,flg]=gmres(mv, rhs-mv(sol_prev), nrestart, 1.0/8, 2, [], [], zeros(size(sol_prev)));
-                    %sol_new=sol_prev+dsol;
                     res_new=norm(mv(sol_new)-rhs)/normf;
                     conv_factor=(res_new/res_prev);
                     if (res_new*(conv_factor)>real_tol && use_self_prec && strcmp(MatVec, 'bfun2')) % we need a prec.
@@ -499,17 +327,8 @@ for swp=1:nswp
                     res_new=tt_dist3(mv(sol_new,[],[]),rhs)/normf;
                     conv_factor=(res_new/res_prev);
                     if (res_new*conv_factor>real_tol && use_self_prec && strcmp(MatVec, 'bfun2')) % we need a prec.
-%                         if (strcmp(local_prec, 'selfprec'))
                             iB=tt_minres_selfprec(B, prec_tol, prec_compr, prec_iters, 'right');
-
-%                             resid = tt_add(rhs, tt_scal(mv(sol_new,[],[]), -1));
-%                             resid = tt_compr2(resid, real_tol);
-
-                            sol = tt_gmres(@(vec,eps,mr)bfun3(B, vec, eps, mr), rhs, real_tol, gmres_iters, nrestart, real_tol, real_tol, @(vec,eps,mr)bfun3(iB, vec, eps, mr), [], [], sol_new);
-%                             dsol = bfun3(iB,dsol,real_tol);
-%                             sol = tt_add(sol_new,dsol);
-%                             sol = tt_compr2(sol, real_tol);
-%                         end;
+                            sol = tt_gmres(@(vec,tolerance,mr)bfun3(B, vec, tolerance, mr), rhs, real_tol, gmres_iters, nrestart, real_tol, real_tol, @(vec,tolerance,mr)bfun3(iB, vec, tolerance, mr), [], [], sol_new);
                     else
                         sol = tt_gmres(mv, rhs, real_tol, gmres_iters, nrestart, real_tol, real_tol, [], [], [], sol_new);
                     end;
@@ -529,9 +348,6 @@ for swp=1:nswp
 	    sol = sol_prev;
         end;
 
-        if (verb>1)
-            fprintf('=dmrg_solve2= Sweep %d, block %d, res_true = %3.3e\n', swp, i, res_true);
-        end;
         if ((res_true>res_prev/trunc_to_true))&&(res_true>real_tol)&&(~last_sweep)
 	    fprintf('--warn-- the residual damp by gmres was smaller than in the truncation\n');
 %             keyboard;
@@ -543,9 +359,7 @@ for swp=1:nswp
             max_res = res_prev;
         end;
 
-        if (verb>1)
-        fprintf('=dmrg_solve2= Sweep %d, block %d, dx=%3.3e, res_prev = %3.3e\n', swp, i, dx(i), res_prev);
-        end;
+        
         if (strcmp(local_format, 'full'))
             nrmsol = norm(sol, 'fro');
         else
@@ -560,12 +374,12 @@ for swp=1:nswp
         end;
 
         % The new core does not converge - increase rank
-        if (dx(i)/dx_old(i)>top_conv)&&(dx(i)>eps/(d^d_pow_check))
+        if (dx(i)/dx_old(i)>top_conv)&&(dx(i)>tolerance/(d^d_pow_check))
             drank(i)=drank(i)+ddrank;
             dpows(i)=dpows(i)+ddpow;
         end;
         % The new core converges well - try to decrease rank
-        if (dx(i)/dx_old(i)<bot_conv)||(dx(i)<eps/(d^d_pow_check))
+        if (dx(i)/dx_old(i)<bot_conv)||(dx(i)<tolerance/(d^d_pow_check))
             drank(i)=max(drank(i)-ddrank, min_drank);
             dpows(i)=max(dpows(i)-ddpow, min_dpow);
         end;
@@ -604,10 +418,8 @@ for swp=1:nswp
                 else
                     resid = norm(bfun2(B,sol,rxm1,m1,m2,rxm3,rxn1,k1,k2,rxn3)-rhs)/norm(rhs);
                 end;
-                %             if ( verb>1 )
-                %             fprintf('=dmrg_solve2= sweep %d, block %d, r=%d, resid=%g, er0=%g, MatVec=%s, rB=%d\n', swp, i, r, resid, er0/flm, MatVec, rB);
-                %             end
-                if ((resid<max(res_true*trunc_to_true, eps/(d^dpows(i)))) ) %Value of the rank is OK
+                
+                if ((resid<max(res_true*trunc_to_true, tolerance/(d^dpows(i)))) ) %Value of the rank is OK
                     rM = r-1;
                     r = round((r0+rM)/2);
                 else %Is not OK.
@@ -622,10 +434,8 @@ for swp=1:nswp
             cursol{2}=conj(v(:,1:r))*diag(s(1:r));
             if (strcmp(MatVec,'full')||strcmp(MatVec,'half-full'))
                 resid = B*full(tt_tensor(cursol),rxm1*m1*m2*rxm3)-rhs;
-                %resid = B*reshape(tt_to_full(cursol), rxm1*m1*m2*rxm3, 1)-rhs;                
             else
                 resid = full(tt_tensor(tt_mv(B,cursol)),rxm1*m1*m2*rxm3)-rhs;
-                %resid = reshape(tt_to_full(tt_mv(B,cursol)), rxm1*m1*m2*rxm3, 1)-rhs;
             end;
             while (r<min(size(s,1), rmax))
                 r=r+1;
@@ -634,18 +444,14 @@ for swp=1:nswp
                 cursol{2}=conj(v(:,r))*s(r);
                 if (strcmp(MatVec,'full')||strcmp(MatVec,'half-full'))
                     resid = B*full(tt_tensor(cursol),rxm1*m1*m2*rxm3)+resid;
-                    %resid = B*reshape(tt_to_full(cursol), rxm1*m1*m2*rxm3, 1) + resid;
-
+                    
                 else
                     resid = full(tt_tensor(tt_mv(B,cursol)),rxm1*m1*m2*rxm3)+resid;
-                    %resid = reshape(tt_to_full(tt_mv(B,cursol)), rxm1*m1*m2*rxm3, 1)+resid;
 
                 end;
                 normres = norm(resid)/norm(rhs);
-                %             if ( verb>1 )
-                %                 fprintf('=dmrg_solve2= sweep %d, block %d, r=%d, resid=%g, er0=%g, MatVec=%s, rB=%d\n', swp, i, r, normres, er0/flm, MatVec, rB);
-                %             end
-                if ((normres<max(res_true*trunc_to_true, eps/(d^dpows(i)))) ) %Value of the rank is OK
+                
+                if ((normres<max(res_true*trunc_to_true, tolerance/(d^dpows(i)))) ) %Value of the rank is OK
                     break;
                 end;
             end;
@@ -664,61 +470,8 @@ for swp=1:nswp
             % only one of factors, as we have the previous solution
             [v,rv]=qr(x2.',0); % size m2*rxm3, rxm2' - rxm2',rxm2
             r = size(v,2);
-% %             rxm2 = size(x2,2);
             u = x1*rv.';
             s = ones(r,1);
-%
-%             [u,s,v]=svd(x1, 'econ');
-%             v = x2*conj(v);
-%             s = diag(s);
-%             flm=norm(s);
-%             %Truncation block. We have to make it smarter by binary search
-%             r0 = 1; rM = min(size(s,1),rmax); r = round((r0+rM)/2);
-%             while (rM-r0>2)
-%                 er0=norm(s(r+1:numel(s)));
-%                 if (mod(swp,dropsweeps)~=0)&&(swp>1)&&(~last_sweep)
-%                     sol = sol_prev+reshape(u(:,1:r)*diag(s(1:r))*(v(:,1:r)).',rxm1*m1*m2*rxm3, 1);
-%                 else
-%                     sol = reshape(u(:,1:r)*diag(s(1:r))*(v(:,1:r)).',rxm1*m1*m2*rxm3, 1);
-%                 end;
-%                 if (strcmp(MatVec,'full'))
-%                     resid = norm(B*sol-rhs)/norm(rhs);
-%                 else
-%                     resid = norm(bfun2(B,sol,rxm1,m1,m2,rxm3,rxn1,k1,k2,rxn3)-rhs)/norm(rhs);
-%                 end;
-%                 if ((resid<max(res_true*trunc_to_true, eps/(d^dpows(i)))) ) %Value of the rank is OK
-%                     rM = r-1;
-%                     r = round((r0+rM)/2);
-%                 else %Is not OK.
-%                     r0 = r;
-%                     r = round((r0+rM)/2);
-%                 end;
-%             end
-%             r = r0;
-%             % Line search - if the rank is underestimated
-%             cursol = cell(2,1);
-%             cursol{1}=u(:,1:r);
-%             cursol{2}=v(:,1:r)*diag(s(1:r));
-%             if (strcmp(MatVec,'full'))
-%                 resid = B*reshape(tt_to_full(cursol), rxm1*m1*m2*rxm3, 1)-rhs;
-%             else
-%                 resid = reshape(tt_to_full(tt_mv(B,cursol)), rxm1*m1*m2*rxm3, 1)-rhs;
-%             end;
-%             while (r<min(size(s,1), rmax))
-%                 r=r+1;
-%                 er0=norm(s(r+1:numel(s)));
-%                 cursol{1}=u(:,r);
-%                 cursol{2}=v(:,r)*s(r);
-%                 if (strcmp(MatVec,'full'))
-%                     resid = resid + B*reshape(tt_to_full(cursol), rxm1*m1*m2*rxm3, 1);
-%                 else
-%                     resid = resid + reshape(tt_to_full(tt_mv(B,cursol)), rxm1*m1*m2*rxm3, 1);
-%                 end;
-%                 normres = norm(resid)/norm(rhs);
-%                 if ((normres<max(res_true*trunc_to_true, eps/(d^dpows(i)))) ) %Value of the rank is OK
-%                     break;
-%                 end;
-%             end;
         end;
         r = min(r, max(size(s))); % but not too large
         r = min(r,rmax);
@@ -726,24 +479,6 @@ for swp=1:nswp
         v = v(:,1:r);
         u = u(:,1:r)*diag(s(1:r));
 
-        if ( verb>1 )
-            fprintf('=dmrg_solve2= sweep %d, block %d, r=%d, resid=%g, er0=%g, MatVec=%s, rB=%d\n', swp, i, r, normres, er0/flm, MatVec, rB);
-        end
-
-        % Keep rank increasing for several iterations
-        % It helps for problems with hundred dimensions
-%         if (mod(swp,dropsweeps)~=0)&&(dropflag==0)
-%             r = max(r, ryold);
-%         end;
-%         if (verb>1)
-%             fprintf('sweep %d, block %d, rank: %d, drop: %d\n', swp, i, r, dropflag);
-%         end;
-%         if (dropflag==1)&&(i==2)
-%             dropflag=0;
-%         end;
-
-        % random kick %This is a production code, sir!
-        %Replace by new stuff
 
         if (mod(swp,dropsweeps)~=0)&&(swp>1)&&(~last_sweep)
             u = [x1, u];
@@ -767,32 +502,9 @@ for swp=1:nswp
             end;
         end;
 
-        %v = [v, randn(size(v,1), kickrank)];
-        %u = [u, zeros(size(u,1), kickrank)];
-        %[v,rv] = qr(v,0);
-        %r = size(v,2);
-        %u = u*(rv.');
-
         x{i}=permute(reshape(v, m2, rxm3, r), [1 3 2]);
         x{i-1}=permute(reshape(u, rxm1, m1, r), [2 1 3]);
         rxm2=r; rxn2=r;
-
-        if (verb>2)
-            % check the residual
-            n1 = size(A{1},1);
-            ra1 = size(A{1},4);
-            rx1 = size(x{1},3);
-            ry1 = size(y{1},3);
-            A{1}=squeeze(A{1});
-            x{1}=squeeze(x{1});
-            y{1}=squeeze(y{1});
-            true_resid = tt_mv(A,x);
-            true_resid = tt_dist3(true_resid, y)/sqrt(tt_dot(y,y));
-            fprintf('=dmrg_solve2= Sweep %d, block %d, true_resid: %3.3e\n', swp, i, true_resid);
-            A{1}=reshape(A{1}, n1, n1, 1, ra1);
-            x{1}=reshape(x{1}, n1, 1, rx1);
-            y{1}=reshape(y{1}, n1, 1, ry1);
-        end;
 
 
 
@@ -832,50 +544,11 @@ for swp=1:nswp
         phyold = permute(reshape(phyold, rp2, ry2, rxn2), [3 1 2]);
     end;
 
-%     sol_hist{3}=sol_hist{2};
-%     sol_hist{2}=sol_hist{1};
-%     sol_hist{1}=x;
-
     max_res_old = max_res;
     if (mod(swp,100)==0)
         max_res_old = 0;
     end;
 
-%     if (max_res>max_res_old)
-%         x = sol_hist{3};
-%     else
-%         max_res_old = max_res;
-%     end;
-
-%     if (max_res<tol*2*sqrt(d-1))
-%         dropflag = 1;
-%     end;
-%     if (mod(swp,chksweeps)==0)||(swp==1)
-%         x{1}=reshape(x{1}, size(x{1},1), size(x{1},3));
-%         reschk = norm(tt_tensor(x)-tt_tensor(x_prev))/sqrt(tt_dot(x,x));
-%         x_prev = x;
-%         x{1}=reshape(x{1}, size(x{1},1),1, size(x{1},2));
-%     end;
-    if (verb>0)
-        erank=0; sumn=0;
-        for i=1:d
-            erank = erank+size(x{i},1)*size(x{i},2)*size(x{i},3);
-            sumn = sumn+size(x{i},1);
-        end;
-        erank = sqrt(erank/sumn);
-        
-%        A{1} = reshape(A{1}, size(A{1},1), size(A{1},2), size(A{1},4));
-%        y{1} = reshape(y{1}, size(y{1},1), size(y{1},3));
-%        x{1} = reshape(x{1}, size(x{1},1), size(x{1},3));
-%        res_real = tt_dist3(tt_mv(A, x), y)/sqrt(tt_dot(y,y));
-%        A{1} = reshape(A{1}, size(A{1},1), size(A{1},2), 1, size(A{1},3));
-%        y{1} = reshape(y{1}, size(y{1},1), 1, size(y{1},2));
-%        x{1} = reshape(x{1}, size(x{1},1), 1, size(x{1},2));        
-%        somedata{4}(swp) = res_real;
-        
-%         fprintf('===Sweep %d, res_%d: %3.3e, drop_next: %d, dx_max: %3.3e, res_max: %3.3e\n', swp, chksweeps,0, dropflag, dx_max, max_res);
-        fprintf('=dmrg_solve2= Sweep %d, dx_max: %3.3e, res_max: %3.3e, erank: %g\n', swp, max(dx), max_res, erank);
-    end;
     if (last_sweep)
         break;
     end;
@@ -885,23 +558,11 @@ for swp=1:nswp
     end;
 
     dx_old = dx;
-%     if (verb>0)
-%         fprintf('-=-=-=-=-= dx_max = %3.3e, res_max = %3.3e\n', dx_max, max_res);
-%     end;
-%     if (dx_max<tol*2)
-%     if (max_res<tol*2)
-%         break;
-%     end;
-%     keyboard;
 end;
 
 x{1}=reshape(x{1}, size(x{1},1), size(x{1},3));
 
-% x = tt_compr2(x, eps, rmax);
-
-if (input_is_tt_tensor)
-  x=tt_tensor(x);
-end
+% x = tt_compr2(x, tolerance, rmax);
 
 if (nargout>1)
     somedata{1} = swp;
@@ -945,14 +606,14 @@ y = reshape(y.', rxn1*k1*k2*rxn3, 1);
 end
 
 
-function [y] = bfun3(A, x, eps, mr)
+function [y] = bfun3(A, x, tolerance, mr)
 % For the 2d--TT MatVec
 y = tt_mv(A, x);
 if (nargin<4)
     mr = [];
 end;
-if (nargin>2)&&(~isempty(eps))
-    y = tt_compr2(y, eps, mr);
+if (nargin>2)&&(~isempty(tolerance))
+    y = tt_compr2(y, tolerance, mr);
 end;
 
 end
