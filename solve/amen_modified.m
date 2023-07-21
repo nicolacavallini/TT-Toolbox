@@ -13,12 +13,9 @@ rmax=1000;
 
 kickrank = 10;
 x=x0;
-crz = [];
-
-symm = false;
 
 
-max_full_size = 20000;
+max_full_size = 10000;
 trunc_norm = 'fro';
 
 if (A.n~=A.m)
@@ -31,19 +28,10 @@ n = A.n;
 rx = x.r;
 crx = core2cell(x);
 
-if (symm)
-    disp("IS SYMMETRIC")
-    ra = A.r;
-    ry = (y.r).*ra;
-    ra = ra.^2;
-    cry = core2cell(A'*y);
-    crA = core2cell(A'*A);
-else
-    ry = y.r;
-    ra = A.r;
-    cry = core2cell(y);
-    crA = core2cell(A);
-end;
+ry = y.r;
+ra = A.r;
+cry = core2cell(y);
+crA = core2cell(A);
 
 % Partial projections X'AX and X'Y
 phia = cell(dim+1,1); phia{1}=1; phia{dim+1}=1;
@@ -64,26 +52,19 @@ nrmsx = ones(dim-1,1);
 nrmsc = 1;
 
 % This is some convergence output for test purposes
-testdata = cell(3,1);
-testdata{1} = zeros(dim, nswp); % CPU times
-testdata{2} = cell(dim, nswp); % interm. solutions
-testdata{3} = zeros(dim, nswp); % local residuals (res_prev)
-
+testdata = cell(2,1);
+residual_list = [];
+equivalent_full_size_list = [];
 
 last_sweep = false;
 
-t_amen_solve = tic;
-
 % AMEn sweeps
 for swp=1:nswp
-    % Orthogonalization
-    phiobs = 1;    
+     
     for i=dim:-1:2
-        % Update the Z in the ALS version
         
         if (swp>1)
-            % Remove old norm correction
-            nrmsc = nrmsc/(nrmsy(i-1)/(nrmsa(i-1)*nrmsx(i-1)));
+            nrmsc = nrmsc/(nrmsy(i-1)/(nrmsa(i-1)*nrmsx(i-1)));% Remove old norm correction
         end;
         
         
@@ -150,8 +131,10 @@ for swp=1:nswp
     
     max_res = 0;
     max_dx = 0;
-    phiobs = 1;
     
+
+    equivalent_full_size = [];
+
     for i=1:dim
         % Extract partial projections (and scales)
         Phi1 = phia{i}; Phi2 = phia{i+1};
@@ -172,7 +155,7 @@ for swp=1:nswp
         rhs = reshape(rhs, rx(i)*n(i)*rx(i+1),1);
         norm_rhs = norm(rhs);
         
-        equivalent_full_size = rx(i)*n(i)*rx(i+1);
+        equivalent_full_size = [equivalent_full_size,rx(i)*n(i)*rx(i+1)];
 
         if (rx(i)*n(i)*rx(i+1)<max_full_size) % Full solution
             %      |     |    |
@@ -187,6 +170,10 @@ for swp=1:nswp
             B = reshape(B, rx(i)*n(i), rx(i)*n(i), rx(i+1), rx(i+1));
             B = permute(B, [1, 3, 2, 4]);
             B = reshape(B, rx(i)*n(i)*rx(i+1), rx(i)*n(i)*rx(i+1));
+
+            %s = size(B);
+            %zeros_ratio = nnz(B)/(s(1)*s(2));
+            %disp(zeros_ratio)
             
             res_prev = norm(B*sol_prev - rhs)/norm_rhs;
             
@@ -201,13 +188,6 @@ for swp=1:nswp
 
             sol = local_solve(Phi1, A1, Phi2, rhs, corrected_tol*norm_rhs, sol_prev, local_restart, local_iters);
             res_new = norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;    
-        end;
-        
-        if (res_prev/res_new<resid_damp)&&(res_new>corrected_tol)
-            fprintf('--warn-- the residual damp was smaller than in the truncation\n');
-            % Bas things may happen. We are to introduce an error definetly
-            % larger than the improvement by the local solution. Usually it
-            % means that a preconditioner is needed.
         end;
         
         dx = norm(sol-sol_prev)/norm(sol);
@@ -331,12 +311,18 @@ for swp=1:nswp
         
     end;
 
+    equivalent_full_size_list = [equivalent_full_size_list,equivalent_full_size];
+
     sol_tmp = evaluate_sol(nrmsx,dim,crx,x);
 
     res_tmp = evaluate_residual(A,y,sol_tmp);
-
-    disp(norm(res_tmp))
+    
+    residual_list = [residual_list,norm(res_tmp)];
 end;
+
+
+testdata{1} = residual_list;
+testdata{2} = equivalent_full_size_list;
 
 % Recover the scales
 % Distribute norms equally...
