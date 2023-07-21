@@ -1,4 +1,4 @@
-function [x,testdata]=amen_modified(A, y, tol_exit,x0)
+function [x,testdata]=amen_modified(A, y, tol_exit,nswp,x0)
 
 dim = y.d;
 
@@ -17,7 +17,7 @@ crz = [];
 
 symm = false;
 
-nswp = 4;
+
 max_full_size = 20000;
 trunc_norm = 'fro';
 
@@ -27,9 +27,6 @@ end;
 
 
 n = A.n;
-if (isempty(x))
-    x = tt_rand(n, A.d, 2, -1); %RL orthogonal
-end;
 
 rx = x.r;
 crx = core2cell(x);
