@@ -58,8 +58,14 @@ equivalent_full_size_list = [];
 
 last_sweep = false;
 
+res_tmp = evaluate_residual(A,y,x0);
+residual_list = [residual_list,norm(res_tmp)];
+
 % AMEn sweeps
 for swp=1:nswp
+    disp("---------")
+    disp(strcat("sweep = ",num2str(swp)))
+    
      
     for i=dim:-1:2
         
@@ -154,8 +160,12 @@ for swp=1:nswp
         rhs = rhs*phiy{i+1};
         rhs = reshape(rhs, rx(i)*n(i)*rx(i+1),1);
         norm_rhs = norm(rhs);
+
+        efs = rx(i)*n(i)*rx(i+1);
         
-        equivalent_full_size = [equivalent_full_size,rx(i)*n(i)*rx(i+1)];
+        equivalent_full_size = [equivalent_full_size,efs];
+
+        disp(strcat("equivalent_full_size =",num2str(efs)))
 
         if (rx(i)*n(i)*rx(i+1)<max_full_size) % Full solution
             %      |     |    |
@@ -318,6 +328,7 @@ for swp=1:nswp
     res_tmp = evaluate_residual(A,y,sol_tmp);
     
     residual_list = [residual_list,norm(res_tmp)];
+    disp("---------")
 end;
 
 

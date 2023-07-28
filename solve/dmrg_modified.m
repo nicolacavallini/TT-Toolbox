@@ -287,55 +287,12 @@ for swp=1:nswp
 
         % We will solve the system only if res_prev>0.1*max_res_prev
         if (~last_sweep)&&(res_prev>bs_treshold*max_res_old)
-            if (strcmp(MatVec,'full'))
-                disp("FULL LINEAR SYSTEM")
-                somedata{3}(i, swp) = res_prev;
-                sol = B \ rhs;
-                
-                res=B*sol;
-                res_true = norm(res-rhs)/norm(rhs);
-            else
-                if (strcmp(local_format, 'full'))
-                    [sol_new,flg] = gmres(mv, rhs, nrestart, real_tol, 2, [], [], sol_prev);
-                    res_new=norm(mv(sol_new)-rhs)/normf;
-                    conv_factor=(res_new/res_prev);
-                    if (res_new*(conv_factor)>real_tol && use_self_prec && strcmp(MatVec, 'bfun2')) % we need a prec.
-                        if (strcmp(local_prec, 'selfprec'))
-                            iB=tt_minres_selfprec(B, prec_tol, prec_compr, prec_iters, 'right');
-
-                            resid = rhs-mv(sol_new);
-                            [dsol,flg] = gmres(@(vec)bfun2(B, bfun2(iB,vec,rxm1,m1,m2,rxm3,rxn1,k1,k2,rxn3),...
-                                rxm1,m1,m2,rxm3,rxn1,k1,k2,rxn3), resid, nrestart, real_tol/res_new, gmres_iters);
-                            dsol = bfun2(iB,dsol,rxm1,m1,m2,rxm3,rxn1,k1,k2,rxn3);
-                            sol = sol_new+dsol;
-
-                        end;
-                        if (strcmp(local_prec, 'als'))
-                            sol = als_solve_rx_2(B, rhs, real_tol, [], sol_new);
-                        end;
-                    else
-                        [sol,flg] = gmres(mv, rhs, nrestart, real_tol, gmres_iters, [], [], sol_new);
-                    end;
-                    if (flg>0)
-                        fprintf('-warn- gmres did not converge at block %d\n', i);
-                    end;                    
-
-                    res=mv(sol);
-                    res_true = norm(res-rhs)/normf;
-                else
-                    sol_new = tt_gmres(mv, rhs, real_tol, 2, nrestart, real_tol, real_tol, [], [], [], sol_prev);
-                    res_new=tt_dist3(mv(sol_new,[],[]),rhs)/normf;
-                    conv_factor=(res_new/res_prev);
-                    if (res_new*conv_factor>real_tol && use_self_prec && strcmp(MatVec, 'bfun2')) % we need a prec.
-                            iB=tt_minres_selfprec(B, prec_tol, prec_compr, prec_iters, 'right');
-                            sol = tt_gmres(@(vec,tolerance,mr)bfun3(B, vec, tolerance, mr), rhs, real_tol, gmres_iters, nrestart, real_tol, real_tol, @(vec,tolerance,mr)bfun3(iB, vec, tolerance, mr), [], [], sol_new);
-                    else
-                        sol = tt_gmres(mv, rhs, real_tol, gmres_iters, nrestart, real_tol, real_tol, [], [], [], sol_new);
-                    end;
-                    res=mv(sol,[],[]);
-                    res_true = tt_dist3(res,rhs)/normf;
-                end;
-            end;
+        
+            sol = B \ rhs;
+            
+            res=B*sol;
+            res_true = norm(res-rhs)/norm(rhs);
+        
 
             if (strcmp(local_format, 'full'))
                 dx(i) = norm(sol-sol_prev,'fro')/norm(sol_prev,'fro');
