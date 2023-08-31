@@ -127,11 +127,22 @@ for swp=1:nswp
         r3 = size(Rs{i+1}, 2);
         res2 = reshape(res2, r1, n(i)*r3);
         rr=qr(res2.', 0);
+        
         Rs{i} = triu(rr(1:min(size(rr)), :)).';
+
         curnorm = norm(Rs{i}, 'fro');
+
+        msg = strcat("swp = ",num2str(swp));
+        msg = strcat(msg,", dim = ",num2str(i));
+
         if (Rs{i}>0)
             Rs{i} = Rs{i}/curnorm;
         end;
+        disp("vvvvv")
+        disp(Rs{i})
+        disp("^^^^^")
+
+
         
     end;
     
@@ -188,7 +199,7 @@ for swp=1:nswp
             res_prev = norm(B*sol_prev - rhs)/norm_rhs;
             
             sol = B \ rhs;
-            res_new = norm(B*sol-rhs)/norm_rhs;
+            res_new = norm(B*sol-rhs)/norm_rhs;    
             
         else % Structured solution.
             res_prev = norm(bfun3(Phi1, A1, Phi2, sol_prev) - rhs)/norm_rhs;
@@ -203,7 +214,7 @@ for swp=1:nswp
         dx = norm(sol-sol_prev)/norm(sol);
         max_dx = max(max_dx, dx);
         max_res = max(max_res, res_prev);
-        
+
         if (strcmp(trunc_norm, 'fro'))
             testdata{3}(i,swp) = dx;
         else
@@ -212,12 +223,14 @@ for swp=1:nswp
         
         % Truncation
         sol = reshape(sol, rx(i)*n(i), rx(i+1));
-        
+
         if (kickrank>=0)&&(i<dim)
+
             [u,s,v]=svd(sol, 'econ');
             s = diag(s);
             
             if (strcmp(trunc_norm, 'fro')) % We are happy with L2 truncation (when? but let it be)
+
                 r = my_chop2(s, corrected_tol*resid_damp*norm(s));
             else
                for r=(min(rx(i)*n(i),rx(i+1))-1):-1:1
@@ -239,16 +252,21 @@ for swp=1:nswp
             r = min(r, rmax);
             
         else % we don't want the truncation
+            msg = strcat("swp = ",num2str(swp));
+            msg = strcat(msg,", dim = ",num2str(i));
+            msg = strcat(msg," -> else % we dont want the truncation");
+
+            disp(msg)
+
             [u,v]=qr(sol, 0);
             v=v';
             r = size(u,2);
             s = ones(r,1);
         end;
-        
+
         u = u(:,1:r);
         v = conj(v(:,1:r))*diag(s(1:r));
-        
-        
+
         if (i<dim) %  enrichment, etc
             if (kickrank>0)&&(~last_sweep)
                 % Smarter kick: low-rank PCA in residual
@@ -265,10 +283,19 @@ for swp=1:nswp
                 leftresid = reshape(leftresid, n(i), ra(i+1), rx(i), rx(i+1));
                 leftresid = permute(leftresid, [3,1,2,4]);
                 leftresid = reshape(leftresid, rx(i)*n(i), ra(i+1)*rx(i+1));
+                
                 lefty = phiy{i}*y1;
                 lefty = reshape(lefty, rx(i)*n(i), ry(i+1));
                 
                 leftresid = [leftresid, -lefty]*Rs{i+1};
+                msg = strcat("swp = ",num2str(swp));
+                msg = strcat(msg,", dim = ",num2str(i));
+                disp(msg)
+                disp("vvvvv")
+                disp(Rs{i+1})
+                disp(leftresid)
+                disp("^^^^^")
+
                 [uk,sk,vk]=svd(leftresid, 'econ');
                 uk = uk(:,1:min(kickrank, size(uk,2)));
             
