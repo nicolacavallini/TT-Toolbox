@@ -293,33 +293,25 @@ for swp=1:nswp
                 leftresid = leftresid*Rs{i+1};
 
                 [uk,sk,vk]=svd(leftresid, 'econ');
-                
-                uk = uk(:,1:min(kickrank, size(uk,2)));
+                n_singular_values = sum(diag(sk)>1e-12)                
+                uk = uk(:,1:min([kickrank, size(uk,2),n_singular_values]));
 
                 % enrichment itself, and orthogonalization
-                
-                [u,rv]=qr([u,uk], 0);
-                
+
+                aux = [u,uk];
+                [u,rv]=qr(aux, 0);
+
                 radd = size(uk, 2);
                 v = [v, zeros(rx(i+1), radd)];
                                 
                 v = v*(rv.');
             end;
 
-            %msg = strcat("swp = ",num2str(swp));
-            %msg = strcat(msg,", dim = ",num2str(i));                
-            %disp("vvvvv")
-            %disp(msg)
-            %disp(u)
-            %disp("^^^^^")
-                        
             % Add a linear functional to the frame
-            
             
             cr2 = crx{i+1};
             cr2 = reshape(cr2, rx(i+1), n(i+1)*rx(i+2));
             v = v.'*cr2; % size r+radd, n2, r3
-
 
             % Remove old scale component from nrmsc
             nrmsc = nrmsc/(nrmsy(i)/(nrmsa(i)*nrmsx(i)));            
@@ -339,18 +331,22 @@ for swp=1:nswp
 
             msg = strcat("swp = ",num2str(swp));
             msg = strcat(msg,", dim = ",num2str(i));                
-            disp("vvvvv")
-            disp(msg)
-            disp(size(u))
-            for (k = 1:4)
-                disp(u(1,:,k))
-            end
-            disp(size(v))
-            disp(v)
-            disp("^^^^^")
 
+            disp(msg)
             % Recompute phi.
             [phia{i+1},nrmsa(i)] = compute_next_Phi(phia{i}, u, crA{i}, u, 'lr');
+
+            %msg = strcat("swp = ",num2str(swp));
+            %msg = strcat(msg,", dim = ",num2str(i));                
+            %disp("vvvvv")
+            %disp(msg)
+            %disp(size(phia{i+1}))
+            %disp(phia{i+1}(:,:,1))
+            %disp(phia{i+1}(:,:,2))
+            %disp("^^^^^")
+
+
+
             [phiy{i+1},nrmsy(i)] = compute_next_Phi(phiy{i}, u, [], cry{i}, 'lr');
             % Add new scales
             nrmsc = nrmsc*(nrmsy(i)/(nrmsa(i)*nrmsx(i)));
@@ -442,7 +438,10 @@ if (strcmp(direction, 'lr'))
     %lr: Phi1
     x = reshape(x, rx1, n*rx2);
     Phi = reshape(Phi_prev, rx1, ry1*ra1);
+
     Phi = x'*Phi;
+
+
     if (~isempty(A))
         Phi = reshape(Phi, n*rx2*ry1, ra1);
         Phi = Phi.';
@@ -450,6 +449,11 @@ if (strcmp(direction, 'lr'))
         A = reshape(A, ra1*n, m*ra2);
         Phi = A.'*Phi;
         Phi = reshape(Phi, m, ra2*rx2*ry1);
+        disp("vvvvv")
+        disp(size(Phi))
+        disp(Phi)
+        disp("^^^^^")
+
     else
         Phi = reshape(Phi, n, rx2*ry1);
     end;
