@@ -304,15 +304,14 @@ for swp=1:nswp
                 v = [v, zeros(rx(i+1), radd)];
                                 
                 v = v*(rv.');
-
-                msg = strcat("swp = ",num2str(swp));
-                msg = strcat(msg,", dim = ",num2str(i));                
-                disp("vvvvv")
-                disp(msg)
-                disp(v)
-                disp("^^^^^")
-
             end;
+
+            %msg = strcat("swp = ",num2str(swp));
+            %msg = strcat(msg,", dim = ",num2str(i));                
+            %disp("vvvvv")
+            %disp(msg)
+            %disp(u)
+            %disp("^^^^^")
                         
             % Add a linear functional to the frame
             
@@ -320,6 +319,7 @@ for swp=1:nswp
             cr2 = crx{i+1};
             cr2 = reshape(cr2, rx(i+1), n(i+1)*rx(i+2));
             v = v.'*cr2; % size r+radd, n2, r3
+
 
             % Remove old scale component from nrmsc
             nrmsc = nrmsc/(nrmsy(i)/(nrmsa(i)*nrmsx(i)));            
@@ -333,10 +333,22 @@ for swp=1:nswp
             nrmsx(i)=nrmsx(i)*curnorm;
 
             r = size(u,2);
-            
+
             u = reshape(u, rx(i), n(i), r);
-            v = reshape(v, r, n(i+1), rx(i+2));                  
-            
+            v = reshape(v, r, n(i+1), rx(i+2));
+
+            msg = strcat("swp = ",num2str(swp));
+            msg = strcat(msg,", dim = ",num2str(i));                
+            disp("vvvvv")
+            disp(msg)
+            disp(size(u))
+            for (k = 1:4)
+                disp(u(1,:,k))
+            end
+            disp(size(v))
+            disp(v)
+            disp("^^^^^")
+
             % Recompute phi.
             [phia{i+1},nrmsa(i)] = compute_next_Phi(phia{i}, u, crA{i}, u, 'lr');
             [phiy{i+1},nrmsy(i)] = compute_next_Phi(phiy{i}, u, [], cry{i}, 'lr');
