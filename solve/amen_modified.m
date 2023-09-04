@@ -449,16 +449,18 @@ if (strcmp(direction, 'lr'))
         A = reshape(A, ra1*n, m*ra2);
         Phi = A.'*Phi;
         Phi = reshape(Phi, m, ra2*rx2*ry1);
-        disp("vvvvv")
-        disp(size(Phi))
-        disp(Phi)
-        disp("^^^^^")
 
     else
         Phi = reshape(Phi, n, rx2*ry1);
     end;
     Phi = Phi.';
     Phi = reshape(Phi, ra2*rx2, ry1*m);
+
+    disp("vvvvv")
+    disp(size(Phi))
+    disp(Phi)
+    disp("^^^^^")
+
     
     y = reshape(y, ry1*m, ry2);
     Phi = Phi*y;
