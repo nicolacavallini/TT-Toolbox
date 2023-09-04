@@ -126,7 +126,10 @@ for swp=1:nswp
         res2 = res1*Rs{i+1};
         r3 = size(Rs{i+1}, 2);
         res2 = reshape(res2, r1, n(i)*r3);
-        rr=qr(res2.', 0);
+        
+        [qq,rr] = qr(res2',"econ");
+
+        
         
         Rs{i} = triu(rr(1:min(size(rr)), :)).';
 
@@ -134,15 +137,10 @@ for swp=1:nswp
 
         msg = strcat("swp = ",num2str(swp));
         msg = strcat(msg,", dim = ",num2str(i));
-
-        if (Rs{i}>0)
+        
+        if (curnorm>0)
             Rs{i} = Rs{i}/curnorm;
         end;
-        disp("vvvvv")
-        disp(Rs{i})
-        disp("^^^^^")
-
-
         
     end;
     
@@ -161,7 +159,7 @@ for swp=1:nswp
         % sol_prev
         sol_prev = reshape(crx{i}, rx(i)*n(i)*rx(i+1), 1);
         % Rescale the RHS
-        y1 = y1*nrmsc;
+        y1 = y1*nrmsc;        
         
         % RHS - rewrite it in accordance with new index ordering
         rhs = phiy{i}; % rx'1, ry1
@@ -264,6 +262,9 @@ for swp=1:nswp
             s = ones(r,1);
         end;
 
+
+        
+
         u = u(:,1:r);
         v = conj(v(:,1:r))*diag(s(1:r));
 
@@ -287,26 +288,32 @@ for swp=1:nswp
                 lefty = phiy{i}*y1;
                 lefty = reshape(lefty, rx(i)*n(i), ry(i+1));
                 
-                leftresid = [leftresid, -lefty]*Rs{i+1};
-                msg = strcat("swp = ",num2str(swp));
-                msg = strcat(msg,", dim = ",num2str(i));
-                disp(msg)
-                disp("vvvvv")
-                disp(Rs{i+1})
-                disp(leftresid)
-                disp("^^^^^")
+                leftresid = [leftresid, -lefty];
+
+                leftresid = leftresid*Rs{i+1};
 
                 [uk,sk,vk]=svd(leftresid, 'econ');
-                uk = uk(:,1:min(kickrank, size(uk,2)));
-            
                 
+                uk = uk(:,1:min(kickrank, size(uk,2)));
+
                 % enrichment itself, and orthogonalization
+                
                 [u,rv]=qr([u,uk], 0);
+                
                 radd = size(uk, 2);
                 v = [v, zeros(rx(i+1), radd)];
+                                
                 v = v*(rv.');
+
+                msg = strcat("swp = ",num2str(swp));
+                msg = strcat(msg,", dim = ",num2str(i));                
+                disp("vvvvv")
+                disp(msg)
+                disp(v)
+                disp("^^^^^")
+
             end;
-            r = size(u,2);            
+                        
             % Add a linear functional to the frame
             
             
@@ -323,7 +330,9 @@ for swp=1:nswp
             else
                 curnorm=1;
             end;
-            nrmsx(i)=nrmsx(i)*curnorm;            
+            nrmsx(i)=nrmsx(i)*curnorm;
+
+            r = size(u,2);
             
             u = reshape(u, rx(i), n(i), r);
             v = reshape(v, r, n(i+1), rx(i+2));                  
