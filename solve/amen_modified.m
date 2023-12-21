@@ -1,4 +1,4 @@
-function [x,testdata]=amen_modified(A, y, tol_exit,nswp,x0)
+function [x,testdata,break_iterations,time_per_swap]=amen_modified(A, y, tol_exit,nswp,x0)
 
 dim = y.d;
 
@@ -15,8 +15,9 @@ kickrank = 10;
 x=x0;
 
 
-max_full_size = 10000;
+dense_full_size = 17000;
 trunc_norm = 'fro';
+max_equivalent_full_size = 1e6;
 
 if (A.n~=A.m)
     error(' AMEn does not know how to solve rectangular systems!\n Use amen_solve2(ctranspose(A)*A, ctranspose(A)*f, tol) instead.');
@@ -55,24 +56,26 @@ nrmsc = 1;
 testdata = cell(2,1);
 residual_list = [];
 equivalent_full_size_list = [];
+max_rank_list = [];
+time_per_swap = [];
 
 last_sweep = false;
+break_iterations = false;
 
 res_tmp = evaluate_residual(A,y,x0);
 residual_list = [residual_list,norm(res_tmp)];
 
+
 % AMEn sweeps
 for swp=1:nswp
-    disp("---------")
+    tic;
     disp(strcat("sweep = ",num2str(swp)))
-    
-     
+
     for i=dim:-1:2
-        
+
         if (swp>1)
             nrmsc = nrmsc/(nrmsy(i-1)/(nrmsa(i-1)*nrmsx(i-1)));% Remove old norm correction
-        end;
-        
+        end
         
         cr = crx{i};
         cr = reshape(cr, rx(i), n(i)*rx(i+1));
@@ -129,28 +132,25 @@ for swp=1:nswp
         
         [qq,rr] = qr(res2',"econ");
 
-        
-        
         Rs{i} = triu(rr(1:min(size(rr)), :)).';
 
         curnorm = norm(Rs{i}, 'fro');
 
-        msg = strcat("swp = ",num2str(swp));
-        msg = strcat(msg,", dim = ",num2str(i));
-        
         if (curnorm>0)
             Rs{i} = Rs{i}/curnorm;
-        end;
+        end
         
-    end;
+    end
     
     max_res = 0;
     max_dx = 0;
     
 
     equivalent_full_size = [];
+    max_rank = [];
 
     for i=1:dim
+        
         % Extract partial projections (and scales)
         Phi1 = phia{i}; Phi2 = phia{i+1};
         % Phi1: rx'1, rx1, ra1, or rx'1, ry1
@@ -173,10 +173,17 @@ for swp=1:nswp
         efs = rx(i)*n(i)*rx(i+1);
         
         equivalent_full_size = [equivalent_full_size,efs];
+        max_rank = [max_rank,max([rx(i),rx(i+1)])];
 
-        disp(strcat("equivalent_full_size =",num2str(efs)))
+        if efs>max_equivalent_full_size
+            break_iterations=true;
+        end
 
-        if (rx(i)*n(i)*rx(i+1)<max_full_size) % Full solution
+
+        disp(strcat("equivalent full size = ",num2str(efs)))
+
+        
+        if (rx(i)*n(i)*rx(i+1)<dense_full_size) % Full solution
             %      |     |    |
             % B = Phi1 - A1 - Phi2
             %      |     |    |
@@ -200,14 +207,16 @@ for swp=1:nswp
             res_new = norm(B*sol-rhs)/norm_rhs;    
             
         else % Structured solution.
+            
             res_prev = norm(bfun3(Phi1, A1, Phi2, sol_prev) - rhs)/norm_rhs;
 
-            local_restart=40;
+            local_restart=4;
             local_iters=2;
 
-            sol = local_solve(Phi1, A1, Phi2, rhs, corrected_tol*norm_rhs, sol_prev, local_restart, local_iters);
-            res_new = norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;    
-        end;
+            %sol = local_solve(Phi1, A1, Phi2, rhs, corrected_tol*norm_rhs, sol_prev, local_restart, local_iters);
+            sol = sol_prev;% dummy_solve(Phi1, A1, Phi2, rhs, corrected_tol*norm_rhs, sol_prev, local_restart, local_iters);
+            res_new = res_prev;%norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;
+        end
         
         dx = norm(sol-sol_prev)/norm(sol);
         max_dx = max(max_dx, dx);
@@ -217,11 +226,12 @@ for swp=1:nswp
             testdata{3}(i,swp) = dx;
         else
             testdata{3}(i,swp) = res_prev;
-        end;
+        end
         
         % Truncation
         sol = reshape(sol, rx(i)*n(i), rx(i+1));
 
+        
         if (kickrank>=0)&&(i<dim)
 
             [u,s,v]=svd(sol, 'econ');
@@ -231,39 +241,38 @@ for swp=1:nswp
 
                 r = my_chop2(s, corrected_tol*resid_damp*norm(s));
             else
-               for r=(min(rx(i)*n(i),rx(i+1))-1):-1:1
+                
+                for r=(min(rx(i)*n(i),rx(i+1))-1):-1:1
                    cursol = u(:,1:r)*diag(s(1:r))*v(:,1:r)';
-                   if (rx(i)*n(i)*rx(i+1)<max_full_size)
+                    if (rx(i)*n(i)*rx(i+1)<dense_full_size)
                        cursol = cursol(:);
                        res = norm(B*cursol(:)-rhs)/norm_rhs;
-                   else
+                    else
                        res = norm(bfun3(Phi1, A1, Phi2, cursol)-rhs)/norm_rhs;
-                   end;
-                   if (res>max(corrected_tol*resid_damp, res_new))
+                    end
+                    if (res>max(corrected_tol*resid_damp, res_new))
                        break;
-                   end;
-               end;
+                    end
+                end
                r=r+1;
-            end;
+            end
             
             r = min(r, numel(s));
             r = min(r, rmax);
             
         else % we don't want the truncation
+
             msg = strcat("swp = ",num2str(swp));
             msg = strcat(msg,", dim = ",num2str(i));
             msg = strcat(msg," -> else % we dont want the truncation");
 
-            disp(msg)
+            %disp(msg)
 
             [u,v]=qr(sol, 0);
             v=v';
             r = size(u,2);
             s = ones(r,1);
-        end;
-
-
-        
+        end
 
         u = u(:,1:r);
         v = conj(v(:,1:r))*diag(s(1:r));
@@ -292,9 +301,11 @@ for swp=1:nswp
 
                 leftresid = leftresid*Rs{i+1};
 
+                %[uk,sk,vk]=svd(leftresid, 'econ');
+                %n_singular_values = sum(diag(sk)>1e-12);
+                %uk = uk(:,1:min([kickrank, size(uk,2),n_singular_values]));
                 [uk,sk,vk]=svd(leftresid, 'econ');
-                n_singular_values = sum(diag(sk)>1e-12)                
-                uk = uk(:,1:min([kickrank, size(uk,2),n_singular_values]));
+                uk = uk(:,1:min(kickrank, size(uk,2)));
 
                 % enrichment itself, and orthogonalization
 
@@ -305,7 +316,7 @@ for swp=1:nswp
                 v = [v, zeros(rx(i+1), radd)];
                                 
                 v = v*(rv.');
-            end;
+            end
 
             % Add a linear functional to the frame
             
@@ -314,7 +325,8 @@ for swp=1:nswp
             v = v.'*cr2; % size r+radd, n2, r3
 
             % Remove old scale component from nrmsc
-            nrmsc = nrmsc/(nrmsy(i)/(nrmsa(i)*nrmsx(i)));            
+            nrmsc = nrmsc/(nrmsy(i)/(nrmsa(i)*nrmsx(i)));
+
             
             curnorm = norm(v, 'fro');
             if (curnorm>0)
@@ -328,27 +340,17 @@ for swp=1:nswp
 
             u = reshape(u, rx(i), n(i), r);
             v = reshape(v, r, n(i+1), rx(i+2));
+            
+            % Recompute phi.
+            [phia{i+1},nrmsa(i)] = compute_next_Phi(phia{i}, u, crA{i}, u, 'lr');
 
             msg = strcat("swp = ",num2str(swp));
             msg = strcat(msg,", dim = ",num2str(i));                
 
-            disp(msg)
-            % Recompute phi.
-            [phia{i+1},nrmsa(i)] = compute_next_Phi(phia{i}, u, crA{i}, u, 'lr');
-
-            %msg = strcat("swp = ",num2str(swp));
-            %msg = strcat(msg,", dim = ",num2str(i));                
-            %disp("vvvvv")
-            %disp(msg)
-            %disp(size(phia{i+1}))
-            %disp(phia{i+1}(:,:,1))
-            %disp(phia{i+1}(:,:,2))
-            %disp("^^^^^")
-
-
-
             [phiy{i+1},nrmsy(i)] = compute_next_Phi(phiy{i}, u, [], cry{i}, 'lr');
             % Add new scales
+            
+
             nrmsc = nrmsc*(nrmsy(i)/(nrmsa(i)*nrmsx(i)));
             
             % Stuff back
@@ -358,26 +360,29 @@ for swp=1:nswp
             
         else % i==dim
             % Just stuff back the last core
-%             sol = u(:,1:r)*diag(s(1:r))*v(:,1:r)';
             sol = reshape(sol, rx(i), n(i), rx(i+1));
             crx{i} = sol;
-        end;
+        end
         
-    end;
+    end
 
     equivalent_full_size_list = [equivalent_full_size_list,equivalent_full_size];
+    max_rank_list = [max_rank_list,max_rank];
 
     sol_tmp = evaluate_sol(nrmsx,dim,crx,x);
+    sol_tmp = round(sol_tmp,1e-12);
 
     res_tmp = evaluate_residual(A,y,sol_tmp);
     
     residual_list = [residual_list,norm(res_tmp)];
-    disp("---------")
+    time_per_swap = [time_per_swap,toc];
+    
 end;
 
 
 testdata{1} = residual_list;
 testdata{2} = equivalent_full_size_list;
+testdata{3} = max_rank_list;
 
 % Recover the scales
 % Distribute norms equally...
@@ -385,29 +390,10 @@ nrmsx = exp(sum(log(nrmsx))/dim);
 % ... and plug them into x
 for i=1:dim
     crx{i} = crx{i}*nrmsx;
-end;
+end
 
 x = cell2core(x, crx);
 
-end
-
-function sol = evaluate_sol(some_norm,dim,some_tmp_sol,previus_sol)
-    % Recover the scales
-    % Distribute norms equally...
-    some_other_norm = exp(sum(log(some_norm))/dim);
-    % ... and plug them into x
-    for i=1:dim
-        some_tmp_sol{i} = some_tmp_sol{i}*some_other_norm;
-    end;
-
-    sol = cell2core(previus_sol, some_tmp_sol);
-return
-end
-
-function res = evaluate_residual(matrix,rhs,sol)
-    res = mtimes(matrix,sol);
-    res = minus(rhs,res);
-return
 end
 
 % new
@@ -455,12 +441,6 @@ if (strcmp(direction, 'lr'))
     end;
     Phi = Phi.';
     Phi = reshape(Phi, ra2*rx2, ry1*m);
-
-    disp("vvvvv")
-    disp(size(Phi))
-    disp(Phi)
-    disp("^^^^^")
-
     
     y = reshape(y, ry1*m, ry2);
     Phi = Phi*y;
@@ -469,6 +449,7 @@ if (strcmp(direction, 'lr'))
         Phi = Phi.';
     end;
     Phi = reshape(Phi, rx2, ry2, ra2);
+
 else
     %rl: Phi2
     y = reshape(y, ry1*m, ry2);
