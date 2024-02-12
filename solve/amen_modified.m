@@ -1,4 +1,4 @@
-function [x,testdata,break_iterations,time_per_swap]=amen_modified(A, y, tol_exit,nswp,x0)
+function [x,testdata,break_iterations,time_per_swap]=amen_modified(A, y,x0, tol_exit,nswp,kickrank,dense_full_size,max_equivalent_full_size)
 
 dim = y.d;
 
@@ -7,17 +7,16 @@ dim = y.d;
 resid_damp = 2; % Truncation error to true residual treshold
 corrected_tol = (tol_exit/sqrt(dim))/resid_damp;
 
+real_tol = (tol_exit/sqrt(dim))/resid_damp;
 
 
-rmax=1000;
 
-kickrank = 10;
+rmax=10;
+
 x=x0;
 
 
-dense_full_size = 17000;
 trunc_norm = 'fro';
-max_equivalent_full_size = 1e6;
 
 if (A.n~=A.m)
     error(' AMEn does not know how to solve rectangular systems!\n Use amen_solve2(ctranspose(A)*A, ctranspose(A)*f, tol) instead.');
@@ -175,7 +174,7 @@ for swp=1:nswp
         equivalent_full_size = [equivalent_full_size,efs];
         max_rank = [max_rank,max([rx(i),rx(i+1)])];
 
-        if efs>max_equivalent_full_size
+        if efs>dense_full_size
             break_iterations=true;
         end
 
@@ -209,15 +208,22 @@ for swp=1:nswp
         else % Structured solution.
             
             res_prev = norm(bfun3(Phi1, A1, Phi2, sol_prev) - rhs)/norm_rhs;
+            
+            if (norm_rhs>0)
+                local_prec_char = 0;
+                local_restart = 40;
+                local_iters = 2;
+                
+                sol = sol_prev;%solve3d_2ml(Phi1, A1, Phi2, rhs, real_tol*norm_rhs, sol_prev, local_prec_char, local_restart, local_iters);
+                
+                res_new = norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;
+            else
+                sol = zeros(numel(sol_prev), 1);
+                res_new = 0;
+            end;
+            
+        end;
 
-            local_restart=4;
-            local_iters=2;
-
-            %sol = local_solve(Phi1, A1, Phi2, rhs, corrected_tol*norm_rhs, sol_prev, local_restart, local_iters);
-            sol = sol_prev;% dummy_solve(Phi1, A1, Phi2, rhs, corrected_tol*norm_rhs, sol_prev, local_restart, local_iters);
-            res_new = res_prev;%norm(bfun3(Phi1, A1, Phi2, sol) - rhs)/norm_rhs;
-        end
-        
         dx = norm(sol-sol_prev)/norm(sol);
         max_dx = max(max_dx, dx);
         max_res = max(max_res, res_prev);
