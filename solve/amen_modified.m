@@ -379,6 +379,11 @@ for swp=1:nswp
     sol_tmp = round(sol_tmp,1e-12);
 
     res_tmp = evaluate_residual(A,y,sol_tmp);
+
+    aux = norm(res_tmp)/norm(sol_tmp);
+
+    msg  = strcat("residual = ",num2str(aux));
+    disp(msg);
     
     residual_list = [residual_list,norm(res_tmp)];
     time_per_swap = [time_per_swap,toc];
